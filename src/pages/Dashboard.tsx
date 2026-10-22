@@ -1,4 +1,4 @@
-import { Card, Row, Col, Statistic, Progress, Table } from 'antd';
+import { Card, Row, Col, Statistic, Progress, Table, Alert } from 'antd';
 import { useAppStore } from '../store/useAppStore';
 import {
   saldoAtual,
@@ -7,29 +7,29 @@ import {
   inadimplentes,
   totalPorTipo,
   getMesRef,
+  calcularAberturaAno,
 } from '../lib/calculos';
 import { fmtBR, monthName, monthShort } from '../lib/format';
 
 export function Dashboard() {
   const state = useAppStore((s) => s.state);
-  const mesRef = getMesRef(state);
+  const ano = useAppStore((s) => s.anoVisualizado);
+  const mesRef = getMesRef(state, ano);
 
-  const saldo = saldoAtual(state);
-  const rec = receitaMes(state, mesRef);
-  const des = despesaMes(state, mesRef);
+  const saldo = saldoAtual(state, ano);
+  const rec = receitaMes(state, mesRef, ano);
+  const des = despesaMes(state, mesRef, ano);
   const liq = rec - des;
-  const inad = inadimplentes(state, mesRef);
-  const festaPago = totalPorTipo(state, 'festa');
+  const inad = inadimplentes(state, mesRef, ano);
+  const festaPago = totalPorTipo(state, 'festa', ano);
   const meta = state.campanha.meta || 0;
   const pct = meta > 0 ? Math.min(100, (festaPago / meta) * 100) : 0;
 
-  // Série mensal para o gráfico
-  const recs = Array.from({ length: 12 }, (_, i) => receitaMes(state, i + 1));
-  const desps = Array.from({ length: 12 }, (_, i) => despesaMes(state, i + 1));
+  const recs = Array.from({ length: 12 }, (_, i) => receitaMes(state, i + 1, ano));
+  const desps = Array.from({ length: 12 }, (_, i) => despesaMes(state, i + 1, ano));
   const max = Math.max(...recs, ...desps, 1);
 
-  // Tabela mensal com saldo acumulado
-  let acumulado = state.config.saldoAbertura;
+  let acumulado = calcularAberturaAno(state, ano);
   const tabela = Array.from({ length: 12 }, (_, i) => {
     const m = i + 1;
     const r = recs[i];
@@ -44,7 +44,15 @@ export function Dashboard() {
 
   return (
     <>
-      {/* ===== CARDS ===== */}
+      {ano !== state.config.anoExercicio && (
+        <Alert
+          type="info"
+          showIcon
+          message={`Você está consultando dados de ${ano}. O exercício atual é ${state.config.anoExercicio}.`}
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={12} lg={6}>
           <Card>
@@ -55,14 +63,14 @@ export function Dashboard() {
               valueStyle={{ color: saldo >= 0 ? '#1b5e20' : '#c62828' }}
             />
             <div style={{ fontSize: 11, color: '#6b7f6b', marginTop: 6 }}>
-              Abertura: {fmtBR(state.config.saldoAbertura)}
+              Abertura: {fmtBR(calcularAberturaAno(state, ano))}
             </div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title={`📅 ${monthName(mesRef)} · Líquido`}
+              title={`📅 ${monthName(mesRef)}/${ano} · Líquido`}
               value={liq}
               formatter={(v) => fmtBR(Number(v))}
               valueStyle={{ color: liq >= 0 ? '#1b5e20' : '#c62828' }}
@@ -80,7 +88,7 @@ export function Dashboard() {
               valueStyle={{ color: inad.length > 0 ? '#ef6c00' : '#1b5e20' }}
             />
             <div style={{ fontSize: 11, color: '#6b7f6b', marginTop: 6 }}>
-              sem mensalidade em {monthShort(mesRef)}
+              sem mensalidade em {monthShort(mesRef)}/{ano}
             </div>
           </Card>
         </Col>
@@ -110,8 +118,7 @@ export function Dashboard() {
         </Col>
       </Row>
 
-      {/* ===== GRÁFICO ===== */}
-      <Card title="📈 Receitas × Despesas por mês" style={{ marginBottom: 16 }}>
+      <Card title={`📈 Receitas × Despesas por mês (${ano})`} style={{ marginBottom: 16 }}>
         <div
           style={{
             display: 'flex',
@@ -184,81 +191,31 @@ export function Dashboard() {
             );
           })}
         </div>
-        <div
-          style={{
-            display: 'flex',
-            gap: 24,
-            justifyContent: 'center',
-            marginTop: 12,
-            fontSize: 12,
-          }}
-        >
-          <span>
-            <span
-              style={{
-                display: 'inline-block',
-                width: 10,
-                height: 10,
-                borderRadius: '50%',
-                background: '#1b5e20',
-                marginRight: 6,
-              }}
-            />
-            Receitas
-          </span>
-          <span>
-            <span
-              style={{
-                display: 'inline-block',
-                width: 10,
-                height: 10,
-                borderRadius: '50%',
-                background: '#c62828',
-                marginRight: 6,
-              }}
-            />
-            Despesas
-          </span>
-        </div>
       </Card>
 
-      {/* ===== VALORES MENSAIS ===== */}
-      <Card title="💵 Valores Mensais">
+      <Card title={`💵 Valores Mensais (${ano})`}>
         <Table
           dataSource={tabela}
           columns={[
-            {
-              title: 'Mês',
-              dataIndex: 'm',
-              render: (m: number) => monthName(m),
-            },
+            { title: 'Mês', dataIndex: 'm', render: (m: number) => monthName(m) },
             {
               title: 'Receitas',
               dataIndex: 'r',
               align: 'right',
-              render: (v: number) => (
-                <span style={{ color: '#1b5e20' }}>{fmtBR(v)}</span>
-              ),
+              render: (v: number) => <span style={{ color: '#1b5e20' }}>{fmtBR(v)}</span>,
             },
             {
               title: 'Despesas',
               dataIndex: 'd',
               align: 'right',
-              render: (v: number) => (
-                <span style={{ color: '#c62828' }}>{fmtBR(v)}</span>
-              ),
+              render: (v: number) => <span style={{ color: '#c62828' }}>{fmtBR(v)}</span>,
             },
             {
               title: 'Líquido',
               dataIndex: 'l',
               align: 'right',
               render: (v: number) => (
-                <span
-                  style={{
-                    color: v >= 0 ? '#1b5e20' : '#c62828',
-                    fontWeight: 600,
-                  }}
-                >
+                <span style={{ color: v >= 0 ? '#1b5e20' : '#c62828', fontWeight: 600 }}>
                   {fmtBR(v)}
                 </span>
               ),
@@ -267,9 +224,7 @@ export function Dashboard() {
               title: 'Saldo Acumulado',
               dataIndex: 'acumulado',
               align: 'right',
-              render: (v: number) => (
-                <span style={{ fontWeight: 700 }}>{fmtBR(v)}</span>
-              ),
+              render: (v: number) => <span style={{ fontWeight: 700 }}>{fmtBR(v)}</span>,
             },
           ]}
           pagination={false}
@@ -277,9 +232,7 @@ export function Dashboard() {
           scroll={{ x: 'max-content' }}
           summary={() => (
             <Table.Summary.Row>
-              <Table.Summary.Cell index={0}>
-                <strong>Total</strong>
-              </Table.Summary.Cell>
+              <Table.Summary.Cell index={0}><strong>Total</strong></Table.Summary.Cell>
               <Table.Summary.Cell index={1} align="right">
                 <strong style={{ color: '#1b5e20' }}>{fmtBR(totR)}</strong>
               </Table.Summary.Cell>

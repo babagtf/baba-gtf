@@ -1,52 +1,92 @@
 import type { AppState, Associado, Lancamento } from '../types';
 
-export function receitaTotal(s: AppState) {
-  return s.lancamentos.filter((l) => !l.anulado).reduce((a, l) => a + l.valor, 0);
+function getAnoBase(s: AppState, ano?: number): number {
+  return ano ?? s.config.anoExercicio;
 }
 
-export function despesaTotal(s: AppState) {
-  return s.despesas.filter((d) => !d.anulado).reduce((a, d) => a + d.valor, 0);
+export function calcularAberturaAno(s: AppState, ano: number): number {
+  if (ano === s.config.anoExercicio) return s.config.saldoAbertura;
+  if (ano < s.config.anoExercicio) return 0;
+  let acc = s.config.saldoAbertura;
+  for (let a = s.config.anoExercicio; a < ano; a++) {
+    acc += receitaTotal(s, a) - despesaTotal(s, a);
+  }
+  return acc;
 }
 
-export function saldoAtual(s: AppState) {
-  return s.config.saldoAbertura + receitaTotal(s) - despesaTotal(s);
-}
-
-export function receitaMes(s: AppState, m: number) {
+export function receitaTotal(s: AppState, ano?: number) {
+  const a = getAnoBase(s, ano);
   return s.lancamentos
-    .filter((l) => !l.anulado && l.competencia?.mes === m)
-    .reduce((a, l) => a + l.valor, 0);
+    .filter((l) => !l.anulado && l.competencia?.ano === a)
+    .reduce((acc, l) => acc + l.valor, 0);
 }
 
-export function despesaMes(s: AppState, m: number) {
-  const p = `${s.config.anoExercicio}-${String(m).padStart(2, '0')}`;
+export function despesaTotal(s: AppState, ano?: number) {
+  const a = getAnoBase(s, ano);
+  return s.despesas
+    .filter((d) => !d.anulado && d.data.startsWith(String(a)))
+    .reduce((acc, d) => acc + d.valor, 0);
+}
+
+export function saldoAtual(s: AppState, ano?: number) {
+  const a = getAnoBase(s, ano);
+  return calcularAberturaAno(s, a) + receitaTotal(s, a) - despesaTotal(s, a);
+}
+
+export function receitaMes(s: AppState, m: number, ano?: number) {
+  const a = getAnoBase(s, ano);
+  return s.lancamentos
+    .filter(
+      (l) => !l.anulado && l.competencia?.mes === m && l.competencia?.ano === a,
+    )
+    .reduce((acc, l) => acc + l.valor, 0);
+}
+
+export function despesaMes(s: AppState, m: number, ano?: number) {
+  const a = getAnoBase(s, ano);
+  const p = `${a}-${String(m).padStart(2, '0')}`;
   return s.despesas
     .filter((d) => !d.anulado && d.data.startsWith(p))
-    .reduce((a, d) => a + d.valor, 0);
+    .reduce((acc, d) => acc + d.valor, 0);
 }
 
-export function lancAssocMes(s: AppState, aid: string, m: number): Lancamento[] {
+export function lancAssocMes(
+  s: AppState,
+  aid: string,
+  m: number,
+  ano?: number,
+): Lancamento[] {
+  const a = getAnoBase(s, ano);
   return s.lancamentos.filter(
-    (l) => !l.anulado && l.associadoId === aid && l.competencia?.mes === m,
+    (l) =>
+      !l.anulado &&
+      l.associadoId === aid &&
+      l.competencia?.mes === m &&
+      l.competencia?.ano === a,
   );
 }
 
-export function totalAssoc(s: AppState, aid: string) {
+export function totalAssoc(s: AppState, aid: string, ano?: number) {
+  const a = getAnoBase(s, ano);
   return s.lancamentos
-    .filter((l) => !l.anulado && l.associadoId === aid)
-    .reduce((a, l) => a + l.valor, 0);
+    .filter((l) => !l.anulado && l.associadoId === aid && l.competencia?.ano === a)
+    .reduce((acc, l) => acc + l.valor, 0);
 }
 
-export function totalPorTipo(s: AppState, tipo: string) {
+export function totalPorTipo(s: AppState, tipo: string, ano?: number) {
+  const a = getAnoBase(s, ano);
   return s.lancamentos
-    .filter((l) => !l.anulado && l.tipo === tipo)
-    .reduce((a, l) => a + l.valor, 0);
+    .filter(
+      (l) => !l.anulado && l.tipo === tipo && l.competencia?.ano === a,
+    )
+    .reduce((acc, l) => acc + l.valor, 0);
 }
 
-export function inadimplentes(s: AppState, mesRef: number): Associado[] {
-  return s.associados.filter((a) => {
-    if (a.entrada > mesRef) return false;
-    return lancAssocMes(s, a.id, mesRef).filter((l) => l.tipo === 'mensalidade').length === 0;
+export function inadimplentes(s: AppState, mesRef: number, ano?: number): Associado[] {
+  const a = getAnoBase(s, ano);
+  return s.associados.filter((as) => {
+    if (as.entrada > mesRef) return false;
+    return lancAssocMes(s, as.id, mesRef, a).filter((l) => l.tipo === 'mensalidade').length === 0;
   });
 }
 
@@ -58,14 +98,26 @@ export function pendenciaAno(s: AppState, a: Associado, mesRef: number) {
   return falta;
 }
 
-export function getMesRef(s: AppState) {
+export function getMesRef(s: AppState, ano?: number) {
+  const a = getAnoBase(s, ano);
   const h = new Date();
   const cy = h.getFullYear();
   const cm = h.getMonth() + 1;
-  if (s.config.anoExercicio < cy) return 12;
-  if (s.config.anoExercicio > cy) {
-    const ms = s.lancamentos.filter((l) => l.competencia).map((l) => l.competencia!.mes);
-    return ms.length ? Math.max(...ms) : 0;
-  }
+  if (a < cy) return 12;
+  if (a > cy) return 0;
   return cm;
+}
+
+export function getAnosDisponiveis(s: AppState): number[] {
+  const anos = new Set<number>();
+  anos.add(s.config.anoExercicio);
+  s.lancamentos.forEach((l) => {
+    if (l.competencia?.ano) anos.add(l.competencia.ano);
+  });
+  s.despesas.forEach((d) => {
+    const a = parseInt(d.data.slice(0, 4));
+    if (!isNaN(a)) anos.add(a);
+  });
+  anos.add(s.config.anoExercicio + 1);
+  return Array.from(anos).sort((x, y) => x - y);
 }

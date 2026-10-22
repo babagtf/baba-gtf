@@ -1,9 +1,9 @@
-import { Layout as AntLayout, Menu, Button, Space, Typography } from 'antd';
+import { Layout as AntLayout, Menu, Button, Space, Typography, Select } from 'antd';
 import { LogoutOutlined } from '@ant-design/icons';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import { useAuthStore } from '../store/useAuthStore';
-import { saldoAtual } from '../lib/calculos';
+import { saldoAtual, getAnosDisponiveis } from '../lib/calculos';
 import { fmtBR } from '../lib/format';
 
 const { Header, Content } = AntLayout;
@@ -22,9 +22,13 @@ const menuItems = [
 
 export function Layout() {
   const state = useAppStore((s) => s.state);
+  const anoVisualizado = useAppStore((s) => s.anoVisualizado);
+  const setAnoVisualizado = useAppStore((s) => s.setAnoVisualizado);
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const location = useLocation();
+
+  const anos = getAnosDisponiveis(state);
 
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
@@ -43,7 +47,7 @@ export function Layout() {
           paddingBottom: 8,
         }}
       >
-          <Space size="middle" align="center">
+        <Space size="middle" align="center">
           <img
             src="./icon-192.png"
             alt="Logo BABA GTF"
@@ -64,7 +68,17 @@ export function Layout() {
           </div>
         </Space>
 
-        <Space size="middle">
+        <Space size="middle" wrap>
+          <Space size="small" align="center">
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)' }}>Ano:</span>
+            <Select
+              value={anoVisualizado}
+              onChange={setAnoVisualizado}
+              size="small"
+              style={{ width: 90 }}
+              options={anos.map((a) => ({ value: a, label: String(a) }))}
+            />
+          </Space>
           <Text
             style={{
               background: 'rgba(255,255,255,0.18)',
@@ -75,14 +89,11 @@ export function Layout() {
               fontSize: 14,
               border: '1px solid rgba(255,255,255,0.25)',
             }}
+            title={`Saldo em ${anoVisualizado}`}
           >
-            {fmtBR(saldoAtual(state))}
+            {fmtBR(saldoAtual(state, anoVisualizado))}
           </Text>
-          <Button
-            icon={<LogoutOutlined />}
-            onClick={() => logout()}
-            ghost
-          >
+          <Button icon={<LogoutOutlined />} onClick={() => logout()} ghost>
             Sair
           </Button>
         </Space>
