@@ -14,7 +14,10 @@ export const ADMINS: AdminInfo[] = [
   { email: 'baba.gtf.videos@gmail.com', nome: 'BABA GTF Vídeos' },
   { email: 'vinijr18@gmail.com', nome: 'Vini JR' },
   { email: 'fabiodoamordivino@gmail.com', nome: 'Fábio do Amor Divino' },
-  { email: 'rizmario@gmail.com', nome: 'Rizmário' },
+  { email: 'edsonfbispo@gmail.com', nome: 'Edson' },
+  { email: 'rodeeverton@gmail.com', nome: 'Everton' },
+  { email: 'betodantasjr74@gmail.com', nome: 'Beto' },
+  { email: 'adr.nobre84@gmail.com', nome: 'Adriano' },
 ];
 
 export function getAdminByEmail(email: string | null | undefined): AdminInfo | null {
