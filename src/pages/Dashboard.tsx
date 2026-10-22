@@ -1,4 +1,4 @@
-import { Card, Row, Col, Statistic, Progress, Table, Alert } from 'antd';
+import { Card, Row, Col, Statistic, Progress, Table } from 'antd';
 import { useAppStore } from '../store/useAppStore';
 import {
   saldoAtual,
@@ -13,20 +13,20 @@ import { fmtBR, monthName, monthShort } from '../lib/format';
 
 export function Dashboard() {
   const state = useAppStore((s) => s.state);
-  const ano = useAppStore((s) => s.anoVisualizado);
-  const mesRef = getMesRef(state, ano);
+  const ano = state.config.anoExercicio;
+  const mesRef = getMesRef(state);
 
-  const saldo = saldoAtual(state, ano);
-  const rec = receitaMes(state, mesRef, ano);
-  const des = despesaMes(state, mesRef, ano);
+  const saldo = saldoAtual(state);
+  const rec = receitaMes(state, mesRef);
+  const des = despesaMes(state, mesRef);
   const liq = rec - des;
-  const inad = inadimplentes(state, mesRef, ano);
-  const festaPago = totalPorTipo(state, 'festa', ano);
+  const inad = inadimplentes(state, mesRef);
+  const festaPago = totalPorTipo(state, 'festa');
   const meta = state.campanha.meta || 0;
   const pct = meta > 0 ? Math.min(100, (festaPago / meta) * 100) : 0;
 
-  const recs = Array.from({ length: 12 }, (_, i) => receitaMes(state, i + 1, ano));
-  const desps = Array.from({ length: 12 }, (_, i) => despesaMes(state, i + 1, ano));
+  const recs = Array.from({ length: 12 }, (_, i) => receitaMes(state, i + 1));
+  const desps = Array.from({ length: 12 }, (_, i) => despesaMes(state, i + 1));
   const max = Math.max(...recs, ...desps, 1);
 
   let acumulado = calcularAberturaAno(state, ano);
@@ -44,15 +44,6 @@ export function Dashboard() {
 
   return (
     <>
-      {ano !== state.config.anoExercicio && (
-        <Alert
-          type="info"
-          showIcon
-          message={`Você está consultando dados de ${ano}. O exercício atual é ${state.config.anoExercicio}.`}
-          style={{ marginBottom: 16 }}
-        />
-      )}
-
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={12} lg={6}>
           <Card>

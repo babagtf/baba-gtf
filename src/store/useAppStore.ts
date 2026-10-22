@@ -12,18 +12,15 @@ let currentUnsubscribe: Unsubscribe | null = null;
 
 interface Store {
   state: AppState;
-  anoVisualizado: number;
   loading: boolean;
   init: () => Promise<void>;
   setState: (updater: (s: AppState) => AppState) => Promise<void>;
-  setAnoVisualizado: (ano: number) => void;
   reset: () => Promise<void>;
   clearLocalAndReload: () => Promise<void>;
 }
 
 export const useAppStore = create<Store>((set, get) => ({
   state: buildSeed(),
-  anoVisualizado: new Date().getFullYear(),
   loading: true,
 
   init: async () => {
@@ -38,11 +35,7 @@ export const useAppStore = create<Store>((set, get) => ({
         const raw = localStorage.getItem(FALLBACK_KEY);
         if (raw) {
           const parsed = JSON.parse(raw) as AppState;
-          set({
-            state: parsed,
-            anoVisualizado: parsed.config.anoExercicio,
-            loading: false,
-          });
+          set({ state: parsed, loading: false });
           return;
         }
       } catch (e) {
@@ -50,11 +43,7 @@ export const useAppStore = create<Store>((set, get) => ({
       }
       const seed = buildSeed();
       localStorage.setItem(FALLBACK_KEY, JSON.stringify(seed));
-      set({
-        state: seed,
-        anoVisualizado: seed.config.anoExercicio,
-        loading: false,
-      });
+      set({ state: seed, loading: false });
       return;
     }
 
@@ -78,15 +67,8 @@ export const useAppStore = create<Store>((set, get) => ({
         ref,
         (snapshot) => {
           if (snapshot.exists()) {
-            const data = snapshot.data() as AppState;
-            const anoAtual = get().anoVisualizado;
-            // Se o anoVisualizado ainda é o "default" (não escolhido), sincroniza
             set({
-              state: data,
-              anoVisualizado:
-                anoAtual === new Date().getFullYear()
-                  ? data.config.anoExercicio
-                  : anoAtual,
+              state: snapshot.data() as AppState,
               loading: false,
             });
           }
@@ -105,23 +87,20 @@ export const useAppStore = create<Store>((set, get) => ({
   setState: (updater) => {
     const next = updater(get().state);
     set({ state: next });
-    
+
     if (isBypassAuth || !isFirebaseEnabled || !db) {
       localStorage.setItem(FALLBACK_KEY, JSON.stringify(next));
       return Promise.resolve();
     }
-    
-    // Retorna a Promise do setDoc para podermos dar await no Config.tsx
+
     return setDoc(doc(db, 'config', 'geral'), next).catch((e) => {
       console.error('[Firestore] setDoc error:', e);
     });
   },
 
-  setAnoVisualizado: (ano) => set({ anoVisualizado: ano }),
-
   reset: async () => {
     const seed = buildSeed();
-    set({ state: seed, anoVisualizado: seed.config.anoExercicio });
+    set({ state: seed });
     if (isBypassAuth || !isFirebaseEnabled || !db) {
       localStorage.setItem(FALLBACK_KEY, JSON.stringify(seed));
     } else if (db) {

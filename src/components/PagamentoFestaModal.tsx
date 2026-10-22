@@ -2,7 +2,20 @@ import { useState } from 'react';
 import { Modal, Input, InputNumber, Select, App } from 'antd';
 import { useAppStore } from '../store/useAppStore';
 import { uid, todayISO, fmtBR } from '../lib/format';
+import { getAuditFields } from '../lib/audit';
 import type { Associado } from '../types';
+
+// Helpers para máscara de moeda brasileira (R$ 1.000,00)
+const currencyFormatter = (value: number | string | undefined) => {
+  if (value === undefined || value === null) return '';
+  const str = String(value);
+  return str.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+};
+
+const currencyParser = (value: string | undefined) => {
+  if (!value) return 0;
+  return Number(value.replace(/\./g, '').replace(',', '.')) || 0;
+};
 
 export function PagamentoFestaModal({
   assoc,
@@ -18,12 +31,17 @@ export function PagamentoFestaModal({
   const [valor, setValor] = useState<number>(state.config.valorFesta);
   const [forma, setForma] = useState('pix');
   const [obs, setObs] = useState('');
+  const [saving, setSaving] = useState(false); // Bloqueia clique duplo
 
   const salvar = () => {
+    if (saving) return;
     if (!valor || valor <= 0) {
       message.error('Valor inválido');
       return;
     }
+    
+    setSaving(true);
+
     setState((s) => ({
       ...s,
       lancamentos: [
@@ -39,9 +57,11 @@ export function PagamentoFestaModal({
           valor,
           formaPagamento: forma,
           observacao: obs.trim() || 'Confra',
+          ...getAuditFields(), // Registra quem adicionou
         },
       ],
     }));
+    
     message.success(`Festa registrada: ${assoc.nome} — ${fmtBR(valor)}`);
     onClose();
   };
@@ -51,6 +71,7 @@ export function PagamentoFestaModal({
       open
       onCancel={onClose}
       onOk={salvar}
+      confirmLoading={saving}
       title={`🏆 Registrar pagamento — ${assoc.nome}`}
       okText="Registrar"
       cancelText="Cancelar"
@@ -70,6 +91,9 @@ export function PagamentoFestaModal({
             step={0.01}
             style={{ width: '100%' }}
             autoFocus
+            formatter={currencyFormatter}
+            parser={currencyParser}
+            onPressEnter={salvar}
           />
         </label>
 
@@ -97,6 +121,7 @@ export function PagamentoFestaModal({
             value={obs}
             onChange={(e) => setObs(e.target.value)}
             placeholder="Ex: 2ª parcela, pago junto com a mensalidade…"
+            onPressEnter={salvar}
           />
         </label>
       </div>

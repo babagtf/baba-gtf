@@ -1,34 +1,36 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Card, InputNumber, Input, Button, Space, Row, Col, Tag, App, Alert, Divider,
+  Card, InputNumber, Input, Button, Space, Row, Col, Tag, App, Alert, Divider, Typography,
 } from 'antd';
 import {
-  SaveOutlined, DownloadOutlined, UploadOutlined, ReloadOutlined,
-  ClearOutlined, DeleteOutlined, InfoCircleOutlined,
+  SaveOutlined, DownloadOutlined, ReloadOutlined, ClearOutlined, InfoCircleOutlined, LogoutOutlined,
 } from '@ant-design/icons';
 import { useAppStore } from '../store/useAppStore';
 import { useAuthStore, isBypassAuth } from '../store/useAuthStore';
+import { useUIStore } from '../store/useUIStore';
 import { isFirebaseEnabled } from '../firebase';
 import { fmtBR, todayISO } from '../lib/format';
 import { receitaTotal, despesaTotal, saldoAtual } from '../lib/calculos';
-import type { AppState } from '../types';
+
+const { Text } = Typography;
 
 export function ConfigPage() {
   const { message, modal } = App.useApp();
   const state = useAppStore((s) => s.state);
   const setState = useAppStore((s) => s.setState);
-  const reset = useAppStore((s) => s.reset);
   const clearLocalAndReload = useAppStore((s) => s.clearLocalAndReload);
 
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  
+  const setHasUnsavedChanges = useUIStore((s) => s.setHasUnsavedChanges);
 
-  // Draft dos campos de configuração (só grava no Salvar)
   const [ano, setAno] = useState(state.config.anoExercicio);
   const [mensalidade, setMensalidade] = useState(state.config.mensalidadePadrao);
   const [festa, setFesta] = useState(state.config.valorFesta);
   const [saldo, setSaldo] = useState(state.config.saldoAbertura);
   const [pin, setPin] = useState(state.config.pin);
+  const [saving, setSaving] = useState(false);
 
   const temAlteracao =
     ano !== state.config.anoExercicio ||
@@ -37,7 +39,36 @@ export function ConfigPage() {
     saldo !== state.config.saldoAbertura ||
     pin !== state.config.pin;
 
-    const salvar = async () => {
+  useEffect(() => {
+    setHasUnsavedChanges(temAlteracao);
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (temAlteracao) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      setHasUnsavedChanges(false);
+    };
+  }, [temAlteracao, setHasUnsavedChanges]);
+
+  const handleLogout = () => {
+    modal.confirm({
+      title: 'Sair do sistema',
+      content: 'Tem certeza que deseja sair do BABA GTF?',
+      okText: 'Sair',
+      okButtonProps: { danger: true },
+      cancelText: 'Cancelar',
+      onOk: () => logout(),
+    });
+  };
+
+  const salvar = () => {
     if (mensalidade < 0 || festa < 0 || saldo < 0) {
       message.error('Valores não podem ser negativos');
       return;
@@ -46,26 +77,63 @@ export function ConfigPage() {
       message.error('PIN deve ter entre 4 e 6 caracteres');
       return;
     }
-    
-    // Usa o await para garantir que salvou no Firebase
-    await setState((s) => ({
-      ...s,
-      config: {
-        ...s.config,
-        anoExercicio: ano,
-        mensalidadePadrao: mensalidade,
-        valorFesta: festa,
-        saldoAbertura: saldo,
-        pin,
+
+    modal.confirm({
+      title: 'Aplicar alterações no sistema?',
+      content: (
+        <div>
+          <p>Você está prestes a alterar as configurações globais do BABA GTF.</p>
+          <p>O sistema será recarregado para aplicar as mudanças.</p>
+          {ano !== state.config.anoExercicio && (
+            <Alert
+              type="warning"
+              showIcon
+              message={`O ano de exercício será alterado de ${state.config.anoExercicio} para ${ano}.`}
+              style={{ marginTop: 12 }}
+            />
+          )}
+        </div>
+      ),
+      width: 600,
+      okText: 'Sim, aplicar',
+      cancelText: 'Cancelar',
+      onOk: async () => {
+        setSaving(true);
+        await setState((s) => ({
+          ...s,
+          config: {
+            ...s.config,
+            anoExercicio: ano,
+            mensalidadePadrao: mensalidade,
+            valorFesta: festa,
+            saldoAbertura: saldo,
+            pin,
+          },
+        }));
+        
+        setHasUnsavedChanges(false);
+        message.success('Configurações salvas! Recarregando o sistema...');
+        
+        if ('serviceWorker' in navigator) {
+          try {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const registration of registrations) {
+              await registration.unregister();
+            }
+            if ('caches' in window) {
+              const cacheNames = await caches.keys();
+              await Promise.all(cacheNames.map((name) => caches.delete(name)));
+            }
+          } catch (e) {
+            console.warn('Não foi possível limpar o cache do Service Worker:', e);
+          }
+        }
+
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
       },
-    }));
-    
-    message.success('Configurações salvas! Recarregando o sistema...');
-    
-    // Força o recarregamento após 1 segundo (tempo do toast ser lido)
-    setTimeout(() => {
-      window.location.reload();
-    }, 1000);
+    });
   };
 
   const restaurarDrafts = () => {
@@ -76,7 +144,7 @@ export function ConfigPage() {
     setPin(state.config.pin);
   };
 
-  /* ===== BACKUP ===== */
+  /* ===== EXPORTAR BACKUP ===== */
   const exportarJSON = () => {
     const blob = new Blob([JSON.stringify(state, null, 2)], {
       type: 'application/json',
@@ -85,81 +153,10 @@ export function ConfigPage() {
     a.href = URL.createObjectURL(blob);
     a.download = `baba-gtf-backup-${todayISO()}.json`;
     a.click();
-    message.success('Backup exportado');
+    message.success('Backup exportado com sucesso');
   };
 
-  const importarJSON = (ev: React.ChangeEvent<HTMLInputElement>) => {
-    const file = ev.target.files?.[0];
-    if (!file) return;
-    ev.target.value = '';
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = JSON.parse(e.target?.result as string);
-
-        // Validação mínima
-        if (
-          !data.config ||
-          !Array.isArray(data.associados) ||
-          !Array.isArray(data.lancamentos) ||
-          !Array.isArray(data.despesas)
-        ) {
-          throw new Error('Arquivo inválido: faltam campos obrigatórios');
-        }
-
-        modal.confirm({
-          title: '⚠️ Confirmar importação?',
-          content: (
-            <div style={{ lineHeight: 1.8 }}>
-              <p>Isso vai <strong>substituir TODOS os dados atuais</strong>:</p>
-              <div
-                style={{
-                  background: '#f1f8e9',
-                  padding: 12,
-                  borderRadius: 6,
-                  marginTop: 8,
-                  fontSize: 13,
-                }}
-              >
-                <p><strong>Arquivo importado:</strong></p>
-                <p>• Associados: <strong>{data.associados.length}</strong></p>
-                <p>• Lançamentos: <strong>{data.lancamentos.length}</strong></p>
-                <p>• Despesas: <strong>{data.despesas.length}</strong></p>
-                <p>• Snapshots: <strong>{data.snapshots?.length || 0}</strong></p>
-                <Divider style={{ margin: '8px 0' }} />
-                <p><strong>Dados atuais:</strong></p>
-                <p>• Associados: {state.associados.length}</p>
-                <p>• Lançamentos: {state.lancamentos.length}</p>
-                <p>• Despesas: {state.despesas.length}</p>
-              </div>
-              <p style={{ marginTop: 12, color: '#c62828', fontWeight: 600 }}>
-                ⚠️ Não há como desfazer. Exporte um backup antes se estiver em dúvida.
-              </p>
-            </div>
-          ),
-          okText: 'Importar e substituir',
-          okButtonProps: { danger: true },
-          cancelText: 'Cancelar',
-          onOk: () => {
-            setState(() => data as AppState);
-            message.success('Dados importados com sucesso');
-            // Sincroniza os drafts com os novos valores
-            setAno(data.config.anoExercicio);
-            setMensalidade(data.config.mensalidadePadrao);
-            setFesta(data.config.valorFesta);
-            setSaldo(data.config.saldoAbertura);
-            setPin(data.config.pin);
-          },
-        });
-      } catch (err: any) {
-        message.error('Erro ao importar: ' + (err.message || 'arquivo inválido'));
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  /* ===== PERIGO ===== */
+  /* ===== MANUTENÇÃO ===== */
   const limparFiltros = () => {
     try {
       ['grade', 'lancamentos', 'despesas', 'associados', 'relatorios'].forEach(
@@ -188,35 +185,6 @@ export function ConfigPage() {
     });
   };
 
-  const resetarTudo = () => {
-    modal.confirm({
-      title: '🗑️ Resetar TODOS os dados?',
-      content: (
-        <div>
-          <p>Isso apaga <strong>tudo</strong> e volta aos dados originais da planilha:</p>
-          <ul style={{ marginLeft: 20, marginTop: 8, fontSize: 13 }}>
-            <li>33 associados</li>
-            <li>202 lançamentos</li>
-            <li>21 despesas</li>
-            <li>0 snapshots</li>
-            <li>Configurações padrão</li>
-          </ul>
-          <p style={{ marginTop: 12, color: '#c62828', fontWeight: 600 }}>
-            ⚠️ Ação irreversível. Exporte um backup primeiro.
-          </p>
-        </div>
-      ),
-      okText: 'Resetar tudo',
-      okButtonProps: { danger: true },
-      cancelText: 'Cancelar',
-      onOk: async () => {
-        await reset();
-        restaurarDrafts();
-        message.success('Dados restaurados ao padrão');
-      },
-    });
-  };
-
   const modoLabel = isBypassAuth
     ? { label: '🛠️ Desenvolvimento (bypass)', color: 'orange' as const }
     : isFirebaseEnabled
@@ -225,9 +193,9 @@ export function ConfigPage() {
 
   return (
     <>
-      {/* ===== STATUS / SOBRE ===== */}
+      {/* HEADER DA CONFIGURAÇÃO */}
       <Card style={{ marginBottom: 16, background: '#f9fbe7' }}>
-        <Row gutter={[16, 16]} align="middle">
+        <Row gutter={[16, 16]} align="middle" justify="space-between">
           <Col xs={24} md={16}>
             <Space direction="vertical" size={4}>
               <div style={{ fontSize: 18, fontWeight: 700, color: '#1b5e20' }}>
@@ -235,12 +203,8 @@ export function ConfigPage() {
               </div>
               <Space wrap size="small">
                 <Tag color={modoLabel.color}>{modoLabel.label}</Tag>
-                <Tag color="default">
-                  {state.associados.length} associados
-                </Tag>
-                <Tag color="default">
-                  {state.lancamentos.length} lançamentos
-                </Tag>
+                <Tag color="default">{state.associados.length} associados</Tag>
+                <Tag color="default">{state.lancamentos.length} lançamentos</Tag>
                 <Tag color="default">{state.despesas.length} despesas</Tag>
                 <Tag color="default">{state.snapshots.length} snapshots</Tag>
               </Space>
@@ -252,29 +216,28 @@ export function ConfigPage() {
             </Space>
           </Col>
           <Col xs={24} md={8} style={{ textAlign: 'right' }}>
-            <Button onClick={() => logout()} danger>
+            <Button 
+              onClick={handleLogout} 
+              danger 
+              type="text" 
+              icon={<LogoutOutlined />}
+            >
               Sair da conta
             </Button>
           </Col>
         </Row>
       </Card>
 
-      {/* ===== CONFIGURAÇÕES GERAIS ===== */}
+      {/* CONFIGURAÇÕES GERAIS */}
       <Card
         title="⚙️ Configurações gerais"
-        extra={
-          temAlteracao && (
-            <Tag color="warning">Alterações não salvas</Tag>
-          )
-        }
+        extra={temAlteracao && <Tag color="warning">Alterações não salvas</Tag>}
         style={{ marginBottom: 16 }}
       >
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
             <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
-              <span style={{ color: '#6b7f6b', fontWeight: 600 }}>
-                Ano do exercício
-              </span>
+              <span style={{ color: '#6b7f6b', fontWeight: 600 }}>Ano do exercício</span>
               <InputNumber
                 value={ano}
                 onChange={(v) => setAno(typeof v === 'number' ? v : 2026)}
@@ -286,9 +249,7 @@ export function ConfigPage() {
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
-              <span style={{ color: '#6b7f6b', fontWeight: 600 }}>
-                Mensalidade padrão
-              </span>
+              <span style={{ color: '#6b7f6b', fontWeight: 600 }}>Mensalidade padrão</span>
               <InputNumber
                 value={mensalidade}
                 onChange={(v) => setMensalidade(typeof v === 'number' ? v : 30)}
@@ -301,9 +262,7 @@ export function ConfigPage() {
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
-              <span style={{ color: '#6b7f6b', fontWeight: 600 }}>
-                Valor festa / confra
-              </span>
+              <span style={{ color: '#6b7f6b', fontWeight: 600 }}>Valor festa / confra</span>
               <InputNumber
                 value={festa}
                 onChange={(v) => setFesta(typeof v === 'number' ? v : 30)}
@@ -316,9 +275,7 @@ export function ConfigPage() {
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
-              <span style={{ color: '#6b7f6b', fontWeight: 600 }}>
-                Saldo de abertura
-              </span>
+              <span style={{ color: '#6b7f6b', fontWeight: 600 }}>Saldo de abertura</span>
               <InputNumber
                 value={saldo}
                 onChange={(v) => setSaldo(typeof v === 'number' ? v : 0)}
@@ -336,9 +293,7 @@ export function ConfigPage() {
         <Row gutter={[16, 16]} align="middle">
           <Col xs={24} md={12}>
             <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
-              <span style={{ color: '#6b7f6b', fontWeight: 600 }}>
-                PIN de acesso secundário
-              </span>
+              <span style={{ color: '#6b7f6b', fontWeight: 600 }}>PIN de acesso secundário</span>
               <Input
                 value={pin}
                 onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
@@ -347,11 +302,11 @@ export function ConfigPage() {
                 style={{ letterSpacing: 6, fontWeight: 700, fontFamily: 'monospace' }}
               />
             </label>
-            <p style={{ fontSize: 11, color: '#6b7f6b', marginTop: 6 }}>
+            <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 6 }}>
               {isBypassAuth
                 ? 'Ativo: em modo bypass, este é o único acesso.'
-                : 'Opcional: com Google Auth ativo, o PIN não é usado. Guarde como reserva para emergência.'}
-            </p>
+                : 'Opcional: com Google Auth ativo, o PIN não é usado. Guarde como reserva.'}
+            </Text>
           </Col>
           <Col xs={24} md={12}>
             <div style={{ fontSize: 12, color: '#6b7f6b', lineHeight: 1.8 }}>
@@ -362,16 +317,20 @@ export function ConfigPage() {
           </Col>
         </Row>
 
-        <div style={{ marginTop: 16, textAlign: 'right' }}>
+        <div style={{ marginTop: 24, textAlign: 'right' }}>
           <Space>
             {temAlteracao && (
-              <Button onClick={restaurarDrafts}>Cancelar alterações</Button>
+              <Button onClick={restaurarDrafts} size="middle">
+                Cancelar alterações
+              </Button>
             )}
             <Button
               type="primary"
               icon={<SaveOutlined />}
               onClick={salvar}
+              loading={saving}
               disabled={!temAlteracao}
+              size="middle"
             >
               Salvar alterações
             </Button>
@@ -379,139 +338,69 @@ export function ConfigPage() {
         </div>
       </Card>
 
-      {/* ===== BACKUP / RESTAURAÇÃO ===== */}
-      <Card title="💾 Backup e restauração" style={{ marginBottom: 16 }}>
-        <Alert
-          message="Faça backup regularmente"
-          description={
-            isBypassAuth
-              ? 'Em modo bypass, os dados ficam apenas no localStorage deste navegador. Se limpar o navegador, perde tudo. Exporte sempre antes de grandes mudanças.'
-              : 'Os dados ficam no Firestore, mas um backup em arquivo é sua rede de segurança contra erros humanos (excluir algo por engano).'
-          }
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-        />
-
-        <Row gutter={[16, 16]}>
-          <Col xs={24} md={12}>
-            <Card size="small" title="⬇️ Exportar">
-              <p style={{ fontSize: 13, color: '#6b7f6b', marginBottom: 12 }}>
-                Baixa um arquivo JSON completo com tudo: configurações,
-                associados, lançamentos, despesas e snapshots.
-              </p>
-              <Button
-                type="primary"
-                icon={<DownloadOutlined />}
-                onClick={exportarJSON}
-                block
-              >
-                Exportar backup JSON
-              </Button>
-            </Card>
-          </Col>
-          <Col xs={24} md={12}>
-            <Card size="small" title="⬆️ Restaurar">
-              <p style={{ fontSize: 13, color: '#6b7f6b', marginBottom: 12 }}>
-                Importa um arquivo JSON exportado anteriormente. Vai mostrar um
-                resumo antes de substituir.
-              </p>
-              <label
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  padding: '8px 15px',
-                  background: '#1b5e20',
-                  color: '#fff',
-                  borderRadius: 6,
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  fontSize: 14,
-                }}
-              >
-                <UploadOutlined /> Importar arquivo JSON
-                <input
-                  type="file"
-                  accept=".json,application/json"
-                  style={{ display: 'none' }}
-                  onChange={importarJSON}
-                />
-              </label>
-            </Card>
-          </Col>
-        </Row>
-      </Card>
-
-      {/* ===== MANUTENÇÃO ===== */}
-      <Card title="🔧 Manutenção" style={{ marginBottom: 16 }}>
-        <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12}>
-            <Button
-              icon={<ClearOutlined />}
-              onClick={limparFiltros}
-              block
-            >
-              Limpar filtros salvos
-            </Button>
-            <p style={{ fontSize: 11, color: '#6b7f6b', marginTop: 6 }}>
-              Reseta os filtros de todas as abas ao padrão.
-            </p>
-          </Col>
-          <Col xs={24} sm={12}>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={limparCache}
-              block
-            >
-              Limpar cache e recarregar
-            </Button>
-            <p style={{ fontSize: 11, color: '#6b7f6b', marginTop: 6 }}>
-              {isBypassAuth
-                ? 'Cuidado: em modo bypass, isso reseta os dados.'
-                : 'Recarrega os dados do Firestore. Seguro.'}
-            </p>
-          </Col>
-        </Row>
-      </Card>
-
-      {/* ===== ZONA DE PERIGO ===== */}
-      <Card
-        title="⚠️ Zona de perigo"
-        style={{ borderColor: '#ffcdd2', borderWidth: 2 }}
-      >
-        <Row gutter={[16, 16]} align="middle">
+      {/* BACKUP */}
+      <Card title="💾 Backup" style={{ marginBottom: 16 }}>
+        <Row align="middle" justify="space-between" gutter={[16, 16]}>
           <Col xs={24} md={16}>
-            <p style={{ color: '#c62828', fontWeight: 600, marginBottom: 4 }}>
-              Resetar todos os dados
-            </p>
-            <p style={{ fontSize: 13, color: '#6b7f6b' }}>
-              Apaga TUDO e restaura os dados originais da planilha 2026. Use
-              apenas em testes ou se precisar recomeçar do zero.
-            </p>
+            <Text type="secondary">
+              Baixe um arquivo JSON com todos os dados do sistema. É sua rede de segurança contra erros humanos.
+            </Text>
           </Col>
           <Col xs={24} md={8} style={{ textAlign: 'right' }}>
-            <Button danger icon={<DeleteOutlined />} onClick={resetarTudo}>
-              Resetar dados
+            <Button
+              type="primary"
+              icon={<DownloadOutlined />}
+              onClick={exportarJSON}
+              size="middle"
+            >
+              Exportar backup JSON
             </Button>
           </Col>
         </Row>
       </Card>
 
-      {/* ===== SOBRE ===== */}
+      {/* MANUTENÇÃO */}
+      <Card title="🔧 Manutenção" style={{ marginBottom: 16 }}>
+        <Space direction="vertical" size="large" style={{ width: '100%' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <Text strong>Limpar filtros salvos</Text>
+              <br />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Reseta os filtros de todas as abas ao padrão.
+              </Text>
+            </div>
+            <Button icon={<ClearOutlined />} onClick={limparFiltros} size="middle">
+              Limpar Filtros
+            </Button>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <Text strong>Limpar cache e recarregar</Text>
+              <br />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {isBypassAuth
+                  ? 'Cuidado: em modo bypass, isso reseta os dados.'
+                  : 'Recarrega os dados do Firestore. Seguro.'}
+              </Text>
+            </div>
+            <Button icon={<ReloadOutlined />} onClick={limparCache} size="middle">
+              Limpar Cache
+            </Button>
+          </div>
+        </Space>
+      </Card>
+
+      {/* SOBRE */}
       <Card style={{ marginTop: 16, background: '#fafafa' }}>
         <Space direction="vertical" size={4}>
           <div style={{ fontSize: 13, color: '#6b7f6b' }}>
-            <InfoCircleOutlined /> <strong>BABA GTF</strong> · Controle de
-            Mensalidades {state.config.anoExercicio}
+            <InfoCircleOutlined /> <strong>BABA GTF</strong> · Controle de Mensalidades {state.config.anoExercicio}
           </div>
           <div style={{ fontSize: 11, color: '#999' }}>
             Versão 3.0 · React + Vite + Ant Design + Zustand ·{' '}
-            {isBypassAuth
-              ? 'Modo dev (bypass)'
-              : isFirebaseEnabled
-              ? 'Firebase conectado'
-              : 'Local'}
+            {isBypassAuth ? 'Modo dev (bypass)' : isFirebaseEnabled ? 'Firebase conectado' : 'Local'}
           </div>
         </Space>
       </Card>

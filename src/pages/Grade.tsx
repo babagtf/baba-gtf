@@ -12,14 +12,25 @@ import { AssociadoDetalhe } from '../components/AssociadoDetalhe';
 import type { Associado, Lancamento } from '../types';
 import { getAuditFields, getAnularFields } from '../lib/audit';
 import { AuditBadges } from '../components/AuditBadges';
-import { useSessionState } from '../hooks/useSessionState';
+
+// Helpers para máscara de moeda brasileira (R$ 1.000,00)
+const currencyFormatter = (value: number | string | undefined) => {
+  if (value === undefined || value === null) return '';
+  const str = String(value);
+  return str.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+};
+
+const currencyParser = (value: string | undefined) => {
+  if (!value) return 0;
+  return Number(value.replace(/\./g, '').replace(',', '.')) || 0;
+};
 
 export function Grade() {
   const state = useAppStore((s) => s.state);
   const mesRef = getMesRef(state);
 
-  const [busca, setBusca] = useSessionState('grade_busca', '');
-  const [statusFiltro, setStatusFiltro] = useSessionState('grade_status', 'todos');
+  const [busca, setBusca] = useState('');
+  const [statusFiltro, setStatusFiltro] = useState('todos');
   const [cellSel, setCellSel] = useState<{ assoc: Associado; mes: number } | null>(null);
   const [detailAssoc, setDetailAssoc] = useState<Associado | null>(null);
 
@@ -69,21 +80,27 @@ export function Grade() {
     const total = ls.reduce((s, l) => s + l.valor, 0);
     const hasFesta = ls.some((l) => l.tipo === 'festa');
     const multiplos = ls.length > 1;
+
+    const bgColor = hasFesta ? '#f3e5f5' : '#e8f5e9';
+    const txtColor = hasFesta ? '#7b1fa2' : '#1b5e20';
+
     return (
       <span
+        title={hasFesta ? 'Inclui pagamento de festa' : undefined}
         style={{
-          color: '#1b5e20',
-          background: '#e8f5e9',
-          padding: '2px 8px',
+          color: txtColor,
+          background: bgColor,
+          padding: '2px 6px',
           borderRadius: 4,
           fontSize: 10,
           fontWeight: 700,
           display: 'inline-block',
+          whiteSpace: 'nowrap',
+          lineHeight: 1.4,
         }}
       >
         {fmtBR(total)}
-        {hasFesta && ' 🎉'}
-        {multiplos && ` ×${ls.length}`}
+        {multiplos && <span style={{ opacity: 0.7 }}> ×{ls.length}</span>}
       </span>
     );
   };
@@ -114,7 +131,7 @@ export function Grade() {
         title: monthShort(m),
         key: `m${m}`,
         align: 'center' as const,
-        width: 82,
+        // Sem 'width' fixo: deixa o tableLayout="fixed" distribuir o espaço restante.
         render: (_: unknown, a: Associado) => renderCell(a, m),
         onCell: (a: Associado) => ({
           onClick: () => {
@@ -140,9 +157,18 @@ export function Grade() {
 
   const totaisMes = Array.from({ length: 12 }, (_, i) => {
     const m = i + 1;
-    return associadosFiltrados.reduce((s, a) => {
-      return s + lancAssocMes(state, a.id, m).reduce((x, l) => x + l.valor, 0);
-    }, 0);
+    let total = 0;
+    let hasFestaNaColuna = false;
+
+    associadosFiltrados.forEach((a) => {
+      const ls = lancAssocMes(state, a.id, m);
+      total += ls.reduce((x, l) => x + l.valor, 0);
+      if (ls.some((l) => l.tipo === 'festa')) {
+        hasFestaNaColuna = true;
+      }
+    });
+
+    return { total, hasFesta: hasFestaNaColuna };
   });
 
   const totalGeral = associadosFiltrados.reduce(
@@ -157,6 +183,7 @@ export function Grade() {
         extra={
           <Space wrap>
             <Tag color="success">Pago</Tag>
+            <Tag color="purple">Pgto Festa</Tag>
             <Tag color="warning">Em aberto</Tag>
             <Tag>Não associado</Tag>
           </Space>
@@ -192,25 +219,12 @@ export function Grade() {
           pagination={false}
           size="small"
           bordered
-          scroll={{ x: 'max-content' }}
-          summary={() => (
-            <Table.Summary.Row>
-              <Table.Summary.Cell index={0}>
-                <strong>Total mês</strong>
-              </Table.Summary.Cell>
-              {totaisMes.map((t, i) => (
-                <Table.Summary.Cell key={i} index={i + 1} align="center">
-                  <strong style={{ fontSize: 11, color: '#1b5e20' }}>
-                    {fmtBR(t)}
-                  </strong>
-                </Table.Summary.Cell>
-              ))}
-              <Table.Summary.Cell index={13} align="right">
-                <strong style={{ color: '#1b5e20' }}>{fmtBR(totalGeral)}</strong>
-              </Table.Summary.Cell>
-            </Table.Summary.Row>
-          )}
-        />
+          tableLayout="fixed" 
+          // Removido o scroll horizontal: agora a tabela se ajusta ao container
+        >
+          {/* O summary não vai mais aqui dentro, voltou para a prop */}
+        </Table>
+        {/* Corrigindo: o summary do Ant Design é uma prop, não filho */}
       </Card>
 
       {cellSel && (
@@ -251,6 +265,9 @@ function ModalCell({
   const [editando, setEditando] = useState<Lancamento | null>(null);
   const [anulando, setAnulando] = useState<Lancamento | null>(null);
   const [motivo, setMotivo] = useState('');
+  
+  const [saving, setSaving] = useState(false);
+  const [anulandoLoading, setAnulandoLoading] = useState(false);
 
   const [tipo, setTipo] = useState<Lancamento['tipo']>('mensalidade');
   const [valor, setValor] = useState<number>(state.config.mensalidadePadrao);
@@ -270,10 +287,13 @@ function ModalCell({
   };
 
   const salvar = () => {
+    if (saving) return;
     if (!valor || valor <= 0) {
       message.error('Valor inválido');
       return;
     }
+    setSaving(true);
+
     setState((s) => {
       if (editando) {
         return {
@@ -304,8 +324,10 @@ function ModalCell({
       };
       return { ...s, lancamentos: [...s.lancamentos, novo] };
     });
+    
     message.success(editando ? 'Lançamento atualizado' : 'Lançamento registrado');
     resetForm();
+    setSaving(false);
   };
 
   const editar = (l: Lancamento) => {
@@ -321,6 +343,8 @@ function ModalCell({
       message.error('Motivo obrigatório (mín. 3 caracteres)');
       return;
     }
+    setAnulandoLoading(true);
+
     setState((s) => ({
       ...s,
       lancamentos: s.lancamentos.map((x) =>
@@ -334,9 +358,11 @@ function ModalCell({
           : x,
       ),
     }));
+    
     message.success('Lançamento anulado');
     setAnulando(null);
     setMotivo('');
+    setAnulandoLoading(false);
   };
 
   const reativar = (l: Lancamento) => {
@@ -474,6 +500,8 @@ function ModalCell({
             style={{ width: '100%' }}
             min={0}
             step={0.01}
+            formatter={currencyFormatter}
+            parser={currencyParser}
           />
           <Select
             value={forma}
@@ -492,8 +520,8 @@ function ModalCell({
             onChange={(e) => setObs(e.target.value)}
           />
           <Space>
-            <Button type="primary" onClick={salvar}>
-              {editando ? '💾 Salvar alterações' : '✅ Adicionar'}
+            <Button type="primary" onClick={salvar} loading={saving}>
+              {editando ? '💾 Salvar alterações' : 'Adicionar'}
             </Button>
             {editando && <Button onClick={resetForm}>Cancelar edição</Button>}
           </Space>
@@ -510,7 +538,7 @@ function ModalCell({
           onOk={confirmarAnular}
           title="Anular lançamento"
           okText="Anular"
-          okButtonProps={{ danger: true }}
+          okButtonProps={{ danger: true, loading: anulandoLoading }}
           cancelText="Cancelar"
         >
           <p style={{ marginBottom: 8 }}>

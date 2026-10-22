@@ -1,9 +1,21 @@
 import { Modal, Form, Select, Input, InputNumber, DatePicker, App } from 'antd';
+import { useState } from 'react';
 import dayjs from 'dayjs';
 import { useAppStore } from '../store/useAppStore';
-import { uid, todayISO, categoriaLabel } from '../lib/format';
+import { uid, todayISO } from '../lib/format';
 import type { Despesa } from '../types';
-import { getAuditFields } from '../lib/audit';
+
+// Helpers para máscara de moeda brasileira (R$ 1.000,00)
+const currencyFormatter = (value: number | string | undefined) => {
+  if (value === undefined || value === null) return '';
+  const str = String(value);
+  return str.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+};
+
+const currencyParser = (value: string | undefined) => {
+  if (!value) return 0;
+  return Number(value.replace(/\./g, '').replace(',', '.')) || 0;
+};
 
 export function DespesaEditModal({
   despesa,
@@ -16,6 +28,7 @@ export function DespesaEditModal({
   const state = useAppStore((s) => s.state);
   const setState = useAppStore((s) => s.setState);
   const [form] = Form.useForm();
+  const [loading, setLoading] = useState(false);
 
   const isEdit = !!despesa;
 
@@ -46,6 +59,8 @@ export function DespesaEditModal({
 
       const dataISO = v.data.format('YYYY-MM-DD') || todayISO();
 
+      setLoading(true); // Bloqueia o botão para evitar clique duplo
+
       setState((s) => {
         if (isEdit) {
           return {
@@ -59,7 +74,7 @@ export function DespesaEditModal({
                     descricao: v.descricao || '',
                     valor: v.valor,
                     observacao: v.observacao || '',
-                    ...getAuditFields(),
+                    editedAt: new Date().toISOString(),
                   }
                 : d,
             ),
@@ -75,10 +90,12 @@ export function DespesaEditModal({
         };
         return { ...s, despesas: [...s.despesas, nova] };
       });
+
       message.success(isEdit ? 'Despesa atualizada' : 'Despesa registrada');
       onClose();
     } catch {
-      /* validação falhou — Ant Design mostra */
+      // Se falhar na validação, apenas remove o loading (o AntD já mostra o erro)
+      setLoading(false);
     }
   };
 
@@ -87,6 +104,7 @@ export function DespesaEditModal({
       open
       onCancel={onClose}
       onOk={handleOk}
+      confirmLoading={loading}
       title={isEdit ? '✏️ Editar despesa' : '➕ Nova despesa'}
       okText={isEdit ? 'Salvar' : 'Registrar'}
       cancelText="Cancelar"
@@ -130,6 +148,8 @@ export function DespesaEditModal({
             addonBefore="R$"
             min={0}
             step={0.01}
+            formatter={currencyFormatter}
+            parser={currencyParser}
           />
         </Form.Item>
 

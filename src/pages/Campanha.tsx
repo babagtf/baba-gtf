@@ -11,6 +11,18 @@ import { PagamentoFestaModal } from '../components/PagamentoFestaModal';
 import { AuditBadges } from '../components/AuditBadges';
 import { getAnularFields } from '../lib/audit';
 
+// Helpers para máscara de moeda brasileira (R$ 1.000,00)
+const currencyFormatter = (value: number | string | undefined) => {
+  if (value === undefined || value === null) return '';
+  const str = String(value);
+  return str.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+};
+
+const currencyParser = (value: string | undefined) => {
+  if (!value) return 0;
+  return Number(value.replace(/\./g, '').replace(',', '.')) || 0;
+};
+
 export function Campanha() {
   const { message } = App.useApp();
   const state = useAppStore((s) => s.state);
@@ -23,6 +35,9 @@ export function Campanha() {
   const [pagando, setPagando] = useState<Associado | null>(null);
   const [detalhe, setDetalhe] = useState<Associado | null>(null);
   const [tab, setTab] = useState<'todos' | 'pagaram' | 'pendentes'>('todos');
+  
+  const [savingNome, setSavingNome] = useState(false);
+  const [savingMeta, setSavingMeta] = useState(false);
 
   const festas = useMemo(
     () =>
@@ -60,16 +75,19 @@ export function Campanha() {
   };
 
   const salvarNome = () => {
+    if (savingNome) return;
     if (!nomeDraft.trim()) {
       message.error('Nome não pode ser vazio');
       return;
     }
+    setSavingNome(true);
     setState((s) => ({
       ...s,
       campanha: { ...s.campanha, nome: nomeDraft.trim() },
     }));
     message.success('Nome atualizado');
     setEditandoNome(false);
+    setSavingNome(false);
   };
 
   const abrirEdicaoMeta = () => {
@@ -78,16 +96,19 @@ export function Campanha() {
   };
 
   const salvarMeta = () => {
+    if (savingMeta) return;
     if (metaDraft < 0) {
       message.error('Meta não pode ser negativa');
       return;
     }
+    setSavingMeta(true);
     setState((s) => ({
       ...s,
       campanha: { ...s.campanha, meta: metaDraft },
     }));
     message.success('Meta atualizada');
     setEditandoMeta(false);
+    setSavingMeta(false);
   };
 
   const anularPagamento = (l: Lancamento) => {
@@ -195,15 +216,17 @@ export function Campanha() {
 
   return (
     <>
+      {/* ===== HERO CARD ===== */}
       <Card style={{ marginBottom: 16 }}>
         <Row gutter={[16, 16]} align="middle">
-          <Col xs={24} md={16}>
+          <Col xs={24} md={18}>
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
                 marginBottom: 8,
+                flexWrap: 'wrap',
               }}
             >
               <span style={{ fontSize: 28 }}>🏆</span>
@@ -219,10 +242,11 @@ export function Campanha() {
               </h2>
               <Button
                 size="small"
+                type="text"
                 icon={<EditOutlined />}
                 onClick={abrirEdicaoNome}
               >
-                Editar
+                Editar nome
               </Button>
             </div>
 
@@ -261,27 +285,26 @@ export function Campanha() {
             ) : (
               <p style={{ color: '#6b7f6b', marginBottom: 0 }}>
                 Defina uma meta para acompanhar o progresso.{' '}
-                <Button type="link" onClick={abrirEdicaoMeta} style={{ padding: 0 }}>
+                <Button type="link" onClick={abrirEdicaoMeta} style={{ padding: 0, height: 'auto' }}>
                   Definir meta agora
                 </Button>
               </p>
             )}
           </Col>
 
-          <Col xs={24} md={8}>
-            <div style={{ display: 'grid', gap: 8 }}>
-              <Button
-                block
-                icon={<EditOutlined />}
-                onClick={abrirEdicaoMeta}
-              >
-                {meta > 0 ? 'Editar meta' : 'Definir meta'}
-              </Button>
-            </div>
+          <Col xs={24} md={6} style={{ textAlign: 'right' }}>
+            <Button
+              icon={<EditOutlined />}
+              onClick={abrirEdicaoMeta}
+              size="middle"
+            >
+              {meta > 0 ? 'Editar meta' : 'Definir meta'}
+            </Button>
           </Col>
         </Row>
       </Card>
 
+      {/* ===== STATS ===== */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={12} sm={6}>
           <Card>
@@ -324,6 +347,7 @@ export function Campanha() {
         </Col>
       </Row>
 
+      {/* ===== LISTA ===== */}
       <Card
         title="Contribuições por associado"
         extra={
@@ -350,10 +374,12 @@ export function Campanha() {
         />
       </Card>
 
+      {/* ===== MODAL EDITAR NOME ===== */}
       <Modal
         open={editandoNome}
         onCancel={() => setEditandoNome(false)}
         onOk={salvarNome}
+        confirmLoading={savingNome}
         title="✏️ Editar nome da campanha"
         okText="Salvar"
         cancelText="Cancelar"
@@ -367,10 +393,12 @@ export function Campanha() {
         />
       </Modal>
 
+      {/* ===== MODAL EDITAR META ===== */}
       <Modal
         open={editandoMeta}
         onCancel={() => setEditandoMeta(false)}
         onOk={salvarMeta}
+        confirmLoading={savingMeta}
         title="✏️ Editar meta da campanha"
         okText="Salvar"
         cancelText="Cancelar"
@@ -387,9 +415,12 @@ export function Campanha() {
           style={{ width: '100%' }}
           autoFocus
           onPressEnter={salvarMeta}
+          formatter={currencyFormatter}
+          parser={currencyParser}
         />
       </Modal>
 
+      {/* ===== MODAL REGISTRAR PAGAMENTO ===== */}
       {pagando && (
         <PagamentoFestaModal
           assoc={pagando}
@@ -397,6 +428,7 @@ export function Campanha() {
         />
       )}
 
+      {/* ===== MODAL DETALHE (parcelas) ===== */}
       {detalhe && (
         <Modal
           open

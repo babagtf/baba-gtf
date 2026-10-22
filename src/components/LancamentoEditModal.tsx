@@ -4,7 +4,18 @@ import dayjs from 'dayjs';
 import { useAppStore } from '../store/useAppStore';
 import { months, uid, tipoLabel, todayISO } from '../lib/format';
 import type { Lancamento } from '../types';
-import { getAuditFields } from '../lib/audit';
+
+// Helpers para máscara de moeda brasileira (R$ 1.000,00)
+const currencyFormatter = (value: number | string | undefined) => {
+  if (value === undefined || value === null) return '';
+  const str = String(value);
+  return str.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+};
+
+const currencyParser = (value: string | undefined) => {
+  if (!value) return 0;
+  return Number(value.replace(/\./g, '').replace(',', '.')) || 0;
+};
 
 export function LancamentoEditModal({
   lancamento,
@@ -19,6 +30,7 @@ export function LancamentoEditModal({
   const state = useAppStore((s) => s.state);
   const setState = useAppStore((s) => s.setState);
   const [form] = Form.useForm();
+  const [loading, setLoading] = useState(false);
 
   const [tipo, setTipo] = useState<Lancamento['tipo']>(
     lancamento?.tipo || initialTipo || 'mensalidade',
@@ -86,6 +98,8 @@ export function LancamentoEditModal({
         ? v.nome?.trim() || null
         : null;
 
+      setLoading(true); // Bloqueia o botão para evitar clique duplo
+
       setState((s) => {
         if (isEdit) {
           return {
@@ -103,7 +117,7 @@ export function LancamentoEditModal({
                     valor: v.valor,
                     formaPagamento: v.formaPagamento,
                     observacao: v.observacao || '',
-                    ...getAuditFields(),
+                    editedAt: new Date().toISOString(),
                   }
                 : l,
             ),
@@ -123,10 +137,12 @@ export function LancamentoEditModal({
         };
         return { ...s, lancamentos: [...s.lancamentos, novo] };
       });
+
       message.success(isEdit ? 'Lançamento atualizado' : 'Lançamento criado');
       onClose();
-    } catch {
-      /* validação falhou — Ant Design mostra */
+    } catch (error) {
+      // Se falhar na validação, apenas remove o loading (o AntD já mostra o erro)
+      setLoading(false);
     }
   };
 
@@ -140,6 +156,7 @@ export function LancamentoEditModal({
       open
       onCancel={onClose}
       onOk={handleOk}
+      confirmLoading={loading} // <-- Spinner no botão
       title={isEdit ? '✏️ Editar lançamento' : '➕ Novo lançamento'}
       okText={isEdit ? 'Salvar' : 'Criar'}
       cancelText="Cancelar"
@@ -233,6 +250,8 @@ export function LancamentoEditModal({
             addonBefore="R$"
             min={0}
             step={0.01}
+            formatter={currencyFormatter}
+            parser={currencyParser}
           />
         </Form.Item>
 
