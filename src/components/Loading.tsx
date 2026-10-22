@@ -11,7 +11,7 @@ export function Loading() {
       }}
     >
       <img
-        src="/icon-192.png"
+        src="./icon-192.png"
         alt="Carregando..."
         style={{
           width: 100,

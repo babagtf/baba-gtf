@@ -41,6 +41,7 @@ export function Despesas() {
   const filtradas = useMemo(() => {
     return state.despesas.filter((d) => {
       if (!showAnuladas && d.anulado) return false;
+      if (!d.data.startsWith(String(state.config.anoExercicio))) return false;
       if (catFiltro !== 'todas' && d.categoria !== catFiltro) return false;
       if (mesFiltro !== 'todos') {
         const mes = String(d.data).slice(5, 7);
@@ -65,15 +66,15 @@ export function Despesas() {
     .filter((d) => !d.anulado)
     .reduce((s, d) => s + d.valor, 0);
 
-  const totaisPorCategoria = useMemo(() => {
+    const totaisPorCategoria = useMemo(() => {
     const r: Record<string, number> = { juiz: 0, goleiro: 0, bola: 0, outras: 0 };
     state.despesas
-      .filter((d) => !d.anulado)
+      .filter((d) => !d.anulado && d.data.startsWith(String(state.config.anoExercicio)))
       .forEach((d) => {
         if (r[d.categoria] !== undefined) r[d.categoria] += d.valor;
       });
     return r;
-  }, [state.despesas]);
+  }, [state.despesas, state.config.anoExercicio]);
 
   const totalGeral =
     totaisPorCategoria.juiz +
@@ -81,7 +82,7 @@ export function Despesas() {
     totaisPorCategoria.bola +
     totaisPorCategoria.outras;
 
-  const qtdAtivas = state.despesas.filter((d) => !d.anulado).length;
+  const qtdAtivas = state.despesas.filter((d) => !d.anulado && d.data.startsWith(String(state.config.anoExercicio))).length;
 
   const limparFiltros = () => {
     setQ('');

@@ -15,7 +15,7 @@ interface Store {
   anoVisualizado: number;
   loading: boolean;
   init: () => Promise<void>;
-  setState: (updater: (s: AppState) => AppState) => void;
+  setState: (updater: (s: AppState) => AppState) => Promise<void>;
   setAnoVisualizado: (ano: number) => void;
   reset: () => Promise<void>;
   clearLocalAndReload: () => Promise<void>;
@@ -105,13 +105,16 @@ export const useAppStore = create<Store>((set, get) => ({
   setState: (updater) => {
     const next = updater(get().state);
     set({ state: next });
+    
     if (isBypassAuth || !isFirebaseEnabled || !db) {
       localStorage.setItem(FALLBACK_KEY, JSON.stringify(next));
-    } else {
-      setDoc(doc(db, 'config', 'geral'), next).catch((e) =>
-        console.error('[Firestore] setDoc error:', e),
-      );
+      return Promise.resolve();
     }
+    
+    // Retorna a Promise do setDoc para podermos dar await no Config.tsx
+    return setDoc(doc(db, 'config', 'geral'), next).catch((e) => {
+      console.error('[Firestore] setDoc error:', e);
+    });
   },
 
   setAnoVisualizado: (ano) => set({ anoVisualizado: ano }),

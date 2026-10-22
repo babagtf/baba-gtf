@@ -25,8 +25,14 @@ export function Campanha() {
   const [tab, setTab] = useState<'todos' | 'pagaram' | 'pendentes'>('todos');
 
   const festas = useMemo(
-    () => state.lancamentos.filter((l) => l.tipo === 'festa' && !l.anulado),
-    [state.lancamentos],
+    () =>
+      state.lancamentos.filter(
+        (l) =>
+          l.tipo === 'festa' &&
+          !l.anulado &&
+          l.competencia?.ano === state.config.anoExercicio
+      ),
+    [state.lancamentos, state.config.anoExercicio],
   );
 
   const arrecadado = festas.reduce((s, l) => s + l.valor, 0);

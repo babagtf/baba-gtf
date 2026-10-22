@@ -37,7 +37,7 @@ export function ConfigPage() {
     saldo !== state.config.saldoAbertura ||
     pin !== state.config.pin;
 
-  const salvar = () => {
+    const salvar = async () => {
     if (mensalidade < 0 || festa < 0 || saldo < 0) {
       message.error('Valores não podem ser negativos');
       return;
@@ -46,7 +46,9 @@ export function ConfigPage() {
       message.error('PIN deve ter entre 4 e 6 caracteres');
       return;
     }
-    setState((s) => ({
+    
+    // Usa o await para garantir que salvou no Firebase
+    await setState((s) => ({
       ...s,
       config: {
         ...s.config,
@@ -57,7 +59,13 @@ export function ConfigPage() {
         pin,
       },
     }));
-    message.success('Configurações salvas');
+    
+    message.success('Configurações salvas! Recarregando o sistema...');
+    
+    // Força o recarregamento após 1 segundo (tempo do toast ser lido)
+    setTimeout(() => {
+      window.location.reload();
+    }, 1000);
   };
 
   const restaurarDrafts = () => {

@@ -53,6 +53,7 @@ export function Lancamentos() {
   const baseFiltrada = useMemo(() => {
     return state.lancamentos.filter((l) => {
       if (!showAnulados && l.anulado) return false;
+      if (l.competencia && l.competencia.ano !== state.config.anoExercicio) return false;
       if (mesFiltro !== 'todos' && l.competencia?.mes !== parseInt(mesFiltro))
         return false;
       if (formaFiltro !== 'todas' && l.formaPagamento !== formaFiltro)
