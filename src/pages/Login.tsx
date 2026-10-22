@@ -66,8 +66,9 @@ export function Login() {
         styles={{ body: { padding: '40px 24px' } }}
       >
         {/* Logo */}
+               {/* Logo */}
         <img
-          src="/icon-192.png"
+          src="./icon-192.png"
           alt="BABA GTF Logo"
           style={{
             width: 120,
@@ -77,14 +78,17 @@ export function Login() {
             filter: 'drop-shadow(0 8px 16px rgba(0,0,0,0.15))',
             borderRadius: 24,
           }}
+          onError={(e) => {
+            (e.target as HTMLImageElement).src = 'https://cdn-icons-png.flaticon.com/512/53/53283.png';
+          }}
         />
 
         <Title level={2} style={{ color: '#1b5e20', marginBottom: 4, fontWeight: 800, letterSpacing: -0.5 }}>
-          BABA GTF
+          DIRETORIA
         </Title>
         
         <Text type="secondary" style={{ display: 'block', marginBottom: 32, fontSize: 15 }}>
-          Controle de Mensalidades
+          Gestão de Mensalidades e Eventos
         </Text>
 
         {erro && (

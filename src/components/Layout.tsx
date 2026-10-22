@@ -43,17 +43,15 @@ export function Layout() {
           paddingBottom: 8,
         }}
       >
-                <Space size="middle" align="center">
+          <Space size="middle" align="center">
           <img
-            src="/icon-192.png"
+            src="./icon-192.png"
             alt="Logo BABA GTF"
             style={{
               width: 42,
               height: 42,
               objectFit: 'contain',
               filter: 'drop-shadow(0px 4px 6px rgba(0,0,0,0.4))',
-              // Se o escudo tiver bordas muito retas, você pode arredondar aqui:
-              // borderRadius: '10px', 
             }}
           />
           <div>
