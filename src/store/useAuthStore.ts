@@ -39,7 +39,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         set({
           user: null,
           loading: false,
-          erro: 'Sua conta não está mais autorizada. Fale com a diretoria.',
+          erro: `A conta "${user.email}" não está mais autorizada. Fale com a diretoria.`,
         });
         return;
       }
@@ -56,16 +56,16 @@ export const useAuthStore = create<AuthState>((set) => ({
       const user = await signInWithGoogle();
       set({ user, erro: null });
     } catch (e: any) {
-      if (e?.message === 'ACESSO_NEGADO') {
+      if (e?.message?.startsWith('ACESSO_NEGADO:')) {
+        const emailRecusado = e.message.split(':')[1];
         set({
           user: null,
-          erro:
-            'Sua conta Google não está autorizada a acessar o BABA GTF. Fale com a diretoria.',
+          erro: `A conta "${emailRecusado}" não tem permissão de acesso. Se você possui outra conta autorizada, tente novamente e selecione a conta correta do Google.`,
         });
       } else {
         set({
           user: null,
-          erro: 'Não foi possível fazer login. Tente novamente.',
+          erro: 'Não foi possível fazer login. Verifique sua conexão e tente novamente.',
         });
         console.error(e);
       }

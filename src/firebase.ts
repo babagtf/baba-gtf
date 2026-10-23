@@ -34,14 +34,23 @@ if (isFirebaseEnabled) {
 
 export { app, auth, db };
 
+// src/firebase.ts
+
 export async function signInWithGoogle(): Promise<User> {
   if (!auth) throw new Error('Firebase não configurado');
   const provider = new GoogleAuthProvider();
+  
+  // ⬇️ ADICIONE ESTA LINHA ⬇️
+  provider.setCustomParameters({
+    prompt: 'select_account'
+  });
+
   const result = await signInWithPopup(auth, provider);
 
   if (!isAdminEmail(result.user.email)) {
+    const emailRecusado = result.user.email;
     await signOut(auth);
-    throw new Error('ACESSO_NEGADO');
+    throw new Error(`ACESSO_NEGADO:${emailRecusado}`);
   }
 
   return result.user;
