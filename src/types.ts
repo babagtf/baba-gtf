@@ -10,11 +10,12 @@ export interface Associado {
   id: string;
   nome: string;
   apelido: string;
-  entrada: number; // mês 1-12
+  entrada: number;
+  saida?: number;
   status: 'ativo' | 'inativo' | 'ex-associado';
   editedAt?: string;
-  editedBy?: string;      
-  editedByName?: string;  
+  editedBy?: string;
+  editedByName?: string;
 }
 
 export type TipoLanc =
@@ -23,7 +24,8 @@ export type TipoLanc =
   | 'visitante'
   | 'ex-associado'
   | 'rendimento'
-  | 'extra';
+  | 'extra'
+  | 'perdao';
 
 export interface Lancamento {
   id: string;
@@ -37,11 +39,11 @@ export interface Lancamento {
   formaPagamento: string;
   observacao?: string;
   editedAt?: string;
-  editedBy?: string;      
-  editedByName?: string;  
+  editedBy?: string;
+  editedByName?: string;
   anulado?: boolean;
   anuladoEm?: string;
-  anuladoPor?: string;    
+  anuladoPor?: string;
   anuladoPorNome?: string;
   motivoAnulacao?: string;
 }
@@ -56,11 +58,11 @@ export interface Despesa {
   valor: number;
   observacao?: string;
   editedAt?: string;
-  editedBy?: string;      
-  editedByName?: string;  
+  editedBy?: string;
+  editedByName?: string;
   anulado?: boolean;
   anuladoEm?: string;
-  anuladoPor?: string;    
+  anuladoPor?: string;
   anuladoPorNome?: string;
   motivoAnulacao?: string;
 }

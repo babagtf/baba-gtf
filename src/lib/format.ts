@@ -33,6 +33,7 @@ export const tipoLabel: Record<string, string> = {
   'ex-associado': 'Ex-associado',
   rendimento: 'Rendimento',
   extra: 'Extra',
+  perdao: 'Perdão de Dívida',
 };
 
 export const categoriaLabel: Record<string, string> = {

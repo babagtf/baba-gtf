@@ -5,18 +5,6 @@ import { useAppStore } from '../store/useAppStore';
 import { months, uid, tipoLabel, todayISO } from '../lib/format';
 import type { Lancamento } from '../types';
 
-// Helpers para máscara de moeda brasileira (R$ 1.000,00)
-const currencyFormatter = (value: number | string | undefined) => {
-  if (value === undefined || value === null) return '';
-  const str = String(value);
-  return str.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-};
-
-const currencyParser = (value: string | undefined) => {
-  if (!value) return 0;
-  return Number(value.replace(/\./g, '').replace(',', '.')) || 0;
-};
-
 export function LancamentoEditModal({
   lancamento,
   initialTipo,
@@ -98,7 +86,7 @@ export function LancamentoEditModal({
         ? v.nome?.trim() || null
         : null;
 
-      setLoading(true); // Bloqueia o botão para evitar clique duplo
+      setLoading(true);
 
       setState((s) => {
         if (isEdit) {
@@ -141,7 +129,6 @@ export function LancamentoEditModal({
       message.success(isEdit ? 'Lançamento atualizado' : 'Lançamento criado');
       onClose();
     } catch (error) {
-      // Se falhar na validação, apenas remove o loading (o AntD já mostra o erro)
       setLoading(false);
     }
   };
@@ -156,7 +143,7 @@ export function LancamentoEditModal({
       open
       onCancel={onClose}
       onOk={handleOk}
-      confirmLoading={loading} // <-- Spinner no botão
+      confirmLoading={loading}
       title={isEdit ? '✏️ Editar lançamento' : '➕ Novo lançamento'}
       okText={isEdit ? 'Salvar' : 'Criar'}
       cancelText="Cancelar"
@@ -247,11 +234,11 @@ export function LancamentoEditModal({
         <Form.Item label="Valor" name="valor" rules={[{ required: true }]}>
           <InputNumber
             style={{ width: '100%' }}
-            addonBefore="R$"
+            prefix="R$"
             min={0}
             step={0.01}
-            formatter={currencyFormatter}
-            parser={currencyParser}
+            decimalSeparator=","
+            precision={2}
           />
         </Form.Item>
 

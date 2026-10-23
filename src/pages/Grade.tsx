@@ -46,8 +46,9 @@ export function Grade() {
       if (statusFiltro === 'ativos' && a.status !== 'ativo') return false;
       if (statusFiltro === 'inadimplentes') {
         if (a.entrada > mesRef) return false;
+        if (a.saida && mesRef > a.saida) return false; // Ignora se o mês ref é após a saída
         const temMens = lancAssocMes(state, a.id, mesRef).some(
-          (l) => l.tipo === 'mensalidade',
+          (l) => l.tipo === 'mensalidade' || l.tipo === 'perdao',
         );
         if (temMens) return false;
       }
@@ -56,10 +57,30 @@ export function Grade() {
   }, [state, busca, statusFiltro, mesRef]);
 
   const renderCell = (a: Associado, m: number) => {
-    if (m < a.entrada) {
-      return <span style={{ color: '#ccc' }}>—</span>;
-    }
+    if (m < a.entrada) return <span style={{ color: '#ccc' }}>—</span>;
+    if (a.saida && m > a.saida) return <span style={{ color: '#ccc' }}>—</span>;
+
     const ls = lancAssocMes(state, a.id, m);
+
+    if (ls.some((l) => l.tipo === 'perdao')) {
+      return (
+        <span
+          title="Dívida perdoada pela diretoria"
+          style={{
+            color: '#888',
+            background: '#f5f5f5',
+            padding: '2px 8px',
+            borderRadius: 4,
+            fontSize: 10,
+            fontWeight: 700,
+            border: '1px dashed #ccc',
+          }}
+        >
+          Perdoado
+        </span>
+      );
+    }
+
     if (ls.length === 0) {
       const emAberto = m <= mesRef;
       return (
@@ -77,6 +98,7 @@ export function Grade() {
         </span>
       );
     }
+
     const total = ls.reduce((s, l) => s + l.valor, 0);
     const hasFesta = ls.some((l) => l.tipo === 'festa');
     const multiplos = ls.length > 1;
@@ -131,14 +153,16 @@ export function Grade() {
         title: monthShort(m),
         key: `m${m}`,
         align: 'center' as const,
-        // Sem 'width' fixo: deixa o tableLayout="fixed" distribuir o espaço restante.
         render: (_: unknown, a: Associado) => renderCell(a, m),
-        onCell: (a: Associado) => ({
-          onClick: () => {
-            if (m >= a.entrada) setCellSel({ assoc: a, mes: m });
-          },
-          style: { cursor: m >= a.entrada ? 'pointer' : 'default' },
-        }),
+        onCell: (a: Associado) => {
+          const bloqueado = m < a.entrada || (a.saida && m > a.saida);
+          return {
+            onClick: () => {
+              if (!bloqueado) setCellSel({ assoc: a, mes: m });
+            },
+            style: { cursor: bloqueado ? 'default' : 'pointer' },
+          };
+        },
       };
     }),
     {
@@ -185,6 +209,7 @@ export function Grade() {
             <Tag color="success">Pago</Tag>
             <Tag color="purple">Pgto Festa</Tag>
             <Tag color="warning">Em aberto</Tag>
+            <Tag style={{ color: '#888', background: '#f5f5f5', border: '1px dashed #ccc' }}>Perdoado</Tag>
             <Tag>Não associado</Tag>
           </Space>
         }
@@ -219,12 +244,30 @@ export function Grade() {
           pagination={false}
           size="small"
           bordered
-          tableLayout="fixed" 
-          // Removido o scroll horizontal: agora a tabela se ajusta ao container
-        >
-          {/* O summary não vai mais aqui dentro, voltou para a prop */}
-        </Table>
-        {/* Corrigindo: o summary do Ant Design é uma prop, não filho */}
+          tableLayout="fixed"
+          summary={() => (
+            <Table.Summary.Row>
+              <Table.Summary.Cell index={0}>
+                <strong>Total mês</strong>
+              </Table.Summary.Cell>
+              {totaisMes.map((t, i) => (
+                <Table.Summary.Cell key={i} index={i + 1} align="center">
+                  <strong
+                    style={{
+                      fontSize: 11,
+                      color: t.hasFesta ? '#7b1fa2' : '#1b5e20',
+                    }}
+                  >
+                    {fmtBR(t.total)}
+                  </strong>
+                </Table.Summary.Cell>
+              ))}
+              <Table.Summary.Cell index={13} align="right">
+                <strong style={{ color: '#1b5e20' }}>{fmtBR(totalGeral)}</strong>
+              </Table.Summary.Cell>
+            </Table.Summary.Row>
+          )}
+        />
       </Card>
 
       {cellSel && (
@@ -246,7 +289,7 @@ export function Grade() {
 }
 
 /* ============================================================
-   MODAL DE CÉLULA — pagamentos do mês + add/edit/anular
+   MODAL DE CÉLULA
    ============================================================ */
 
 function ModalCell({
@@ -284,6 +327,30 @@ function ModalCell({
     setValor(state.config.mensalidadePadrao);
     setForma('pix');
     setObs('');
+  };
+
+  const perdoarDivida = () => {
+    if (saving) return;
+    setSaving(true);
+    
+    setState((s) => {
+      const novo: Lancamento = {
+        id: uid(),
+        data: todayISO(),
+        tipo: 'perdao',
+        associadoId: assoc.id,
+        competencia: { mes, ano: s.config.anoExercicio },
+        valor: 0,
+        formaPagamento: '-',
+        observacao: 'Perdão de dívida concedido pela diretoria',
+        ...getAuditFields(),
+      };
+      return { ...s, lancamentos: [...s.lancamentos, novo] };
+    });
+    
+    message.success('Dívida perdoada com sucesso');
+    onClose();
+    setSaving(false);
   };
 
   const salvar = () => {
@@ -397,7 +464,7 @@ function ModalCell({
         </h4>
 
         {lancamentos.length === 0 && (
-          <p style={{ color: '#6b7f6b', fontSize: 13 }}>
+          <p style={{ color: '#6b7f6b', fontSize: 13, marginBottom: 16 }}>
             Nenhum pagamento registrado neste mês.
           </p>
         )}
@@ -460,6 +527,20 @@ function ModalCell({
           </div>
         ))}
 
+        {lancamentos.length === 0 && (
+          <div style={{ marginTop: 16, marginBottom: 16 }}>
+            <Button 
+              danger 
+              type="dashed" 
+              block 
+              onClick={perdoarDivida}
+              loading={saving}
+            >
+              Perdoar dívida deste mês
+            </Button>
+          </div>
+        )}
+
         <hr
           style={{
             margin: '20px 0',
@@ -496,12 +577,12 @@ function ModalCell({
           <InputNumber
             value={valor}
             onChange={(v) => setValor(typeof v === 'number' ? v : 0)}
-            addonBefore="R$"
+            prefix="R$"
             style={{ width: '100%' }}
             min={0}
             step={0.01}
-            formatter={currencyFormatter}
-            parser={currencyParser}
+            decimalSeparator=","
+            precision={2}
           />
           <Select
             value={forma}

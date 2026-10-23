@@ -5,18 +5,6 @@ import { uid, todayISO, fmtBR } from '../lib/format';
 import { getAuditFields } from '../lib/audit';
 import type { Associado } from '../types';
 
-// Helpers para máscara de moeda brasileira (R$ 1.000,00)
-const currencyFormatter = (value: number | string | undefined) => {
-  if (value === undefined || value === null) return '';
-  const str = String(value);
-  return str.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-};
-
-const currencyParser = (value: string | undefined) => {
-  if (!value) return 0;
-  return Number(value.replace(/\./g, '').replace(',', '.')) || 0;
-};
-
 export function PagamentoFestaModal({
   assoc,
   onClose,
@@ -31,7 +19,7 @@ export function PagamentoFestaModal({
   const [valor, setValor] = useState<number>(state.config.valorFesta);
   const [forma, setForma] = useState('pix');
   const [obs, setObs] = useState('');
-  const [saving, setSaving] = useState(false); // Bloqueia clique duplo
+  const [saving, setSaving] = useState(false);
 
   const salvar = () => {
     if (saving) return;
@@ -57,7 +45,7 @@ export function PagamentoFestaModal({
           valor,
           formaPagamento: forma,
           observacao: obs.trim() || 'Confra',
-          ...getAuditFields(), // Registra quem adicionou
+          ...getAuditFields(),
         },
       ],
     }));
@@ -86,13 +74,13 @@ export function PagamentoFestaModal({
           <InputNumber
             value={valor}
             onChange={(v) => setValor(typeof v === 'number' ? v : 0)}
-            addonBefore="R$"
+            prefix="R$"
             min={0}
             step={0.01}
             style={{ width: '100%' }}
             autoFocus
-            formatter={currencyFormatter}
-            parser={currencyParser}
+            decimalSeparator=","
+            precision={2}
             onPressEnter={salvar}
           />
         </label>

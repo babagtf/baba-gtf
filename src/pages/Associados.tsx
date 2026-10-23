@@ -6,16 +6,17 @@ import {
   PlusOutlined, EditOutlined, StopOutlined, CheckCircleOutlined 
 } from '@ant-design/icons';
 import { useAppStore } from '../store/useAppStore';
-import { totalAssoc, getMesRef } from '../lib/calculos';
-import { fmtBR, months, monthShort } from '../lib/format';
-import type { Associado } from '../types';
+import { totalAssoc, getMesRef, lancAssocMes } from '../lib/calculos';
+import { fmtBR, months, monthShort, uid, todayISO } from '../lib/format';
+import type { Associado, Lancamento } from '../types';
 import { AssociadoDetalhe } from '../components/AssociadoDetalhe';
 import { getAuditFields } from '../lib/audit';
 
 export function Associados() {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const state = useAppStore((s) => s.state);
   const setState = useAppStore((s) => s.setState);
+  const mesRef = getMesRef(state);
 
   const [busca, setBusca] = useState('');
   const [statusFiltro, setStatusFiltro] = useState('todos');
@@ -61,17 +62,79 @@ export function Associados() {
     setEditando(null);
   };
 
-  const toggleStatus = (a: Associado) => {
-    const novoStatus = a.status === 'ativo' ? 'inativo' : 'ativo';
+  const inativarComPerdao = (a: Associado) => {
+    modal.confirm({
+      title: `Inativar ${a.nome}?`,
+      content: (
+        <div>
+          <p>Ao inativar este associado:</p>
+          <ul style={{ marginLeft: 20, marginTop: 8, marginBottom: 16, fontSize: 13 }}>
+            <li>Todas as dívidas em aberto até <strong>{monthShort(mesRef)}/{state.config.anoExercicio}</strong> serão <strong>perdoadas automaticamente</strong>.</li>
+            <li>Os meses futuros ficarão bloqueados na Grade.</li>
+            <li>O status mudará para <strong>INATIVO</strong>.</li>
+          </ul>
+          <p style={{ color: '#c62828', fontWeight: 600 }}>Deseja continuar?</p>
+        </div>
+      ),
+      okText: 'Sim, inativar e perdoar',
+      width: '30%',
+      okButtonProps: { danger: true },
+      cancelText: 'Cancelar',
+      onOk: () => {
+        setState((s) => {
+          const novosLancamentos: Lancamento[] = [];
+          
+          // Varre os meses desde a entrada até o mês atual
+          for (let m = a.entrada; m <= mesRef; m++) {
+            const temMensalidadeOuPerdao = s.lancamentos.some(
+              (l) => l.associadoId === a.id && 
+                     l.competencia?.mes === m && 
+                     l.competencia?.ano === s.config.anoExercicio && 
+                     !l.anulado && 
+                     (l.tipo === 'mensalidade' || l.tipo === 'perdao')
+            );
+
+            // Se estiver em aberto, cria o perdão automático
+            if (!temMensalidadeOuPerdao) {
+              novosLancamentos.push({
+                id: uid(),
+                data: todayISO(),
+                tipo: 'perdao',
+                associadoId: a.id,
+                competencia: { mes: m, ano: s.config.anoExercicio },
+                valor: 0,
+                formaPagamento: '-',
+                observacao: 'Perdão automático na inativação',
+                ...getAuditFields(),
+              });
+            }
+          }
+
+          return {
+            ...s,
+            associados: s.associados.map((x) =>
+              x.id === a.id
+                ? { ...x, status: 'inativo', saida: mesRef, ...getAuditFields() }
+                : x,
+            ),
+            lancamentos: [...s.lancamentos, ...novosLancamentos],
+          };
+        });
+        message.success('Associado inativado e dívidas perdoadas');
+      },
+    });
+  };
+
+  const reativar = (a: Associado) => {
     setState((s) => ({
       ...s,
       associados: s.associados.map((x) =>
         x.id === a.id
-          ? { ...x, status: novoStatus, ...getAuditFields() }
+          ? { ...x, status: 'ativo', saida: undefined, ...getAuditFields() }
           : x,
       ),
     }));
-    message.success(`Associado ${novoStatus === 'ativo' ? 'reativado' : 'inativado'} com sucesso`);
+    message.success('Associado reativado com sucesso');
   };
 
   const columns = [
@@ -86,7 +149,7 @@ export function Associados() {
               color: a.status === 'ativo' ? '#1b5e20' : '#999', 
               fontWeight: 600, 
               cursor: 'pointer',
-              textDecoration: a.status === 'inativo' ? 'line-through' : 'none'
+              textDecoration: a.status !== 'ativo' ? 'line-through' : 'none'
             }}
             onClick={() => setDetalhe(a)}
           >
@@ -162,7 +225,7 @@ export function Associados() {
               type={a.status === 'ativo' ? 'default' : 'primary'}
               danger={a.status === 'ativo'}
               icon={a.status === 'ativo' ? <StopOutlined /> : <CheckCircleOutlined />}
-              onClick={() => toggleStatus(a)}
+              onClick={() => a.status === 'ativo' ? inativarComPerdao(a) : reativar(a)}
             />
           </Tooltip>
         </Space>

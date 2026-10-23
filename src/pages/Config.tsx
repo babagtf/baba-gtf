@@ -253,7 +253,7 @@ export function ConfigPage() {
               <InputNumber
                 value={mensalidade}
                 onChange={(v) => setMensalidade(typeof v === 'number' ? v : 30)}
-                addonBefore="R$"
+                prefix="R$"
                 min={0}
                 step={5}
                 style={{ width: '100%' }}
@@ -266,7 +266,7 @@ export function ConfigPage() {
               <InputNumber
                 value={festa}
                 onChange={(v) => setFesta(typeof v === 'number' ? v : 30)}
-                addonBefore="R$"
+                prefix="R$"
                 min={0}
                 step={5}
                 style={{ width: '100%' }}
@@ -279,7 +279,7 @@ export function ConfigPage() {
               <InputNumber
                 value={saldo}
                 onChange={(v) => setSaldo(typeof v === 'number' ? v : 0)}
-                addonBefore="R$"
+                prefix="R$"
                 min={0}
                 step={10}
                 style={{ width: '100%' }}

@@ -409,14 +409,14 @@ export function Campanha() {
         <InputNumber
           value={metaDraft}
           onChange={(v) => setMetaDraft(typeof v === 'number' ? v : 0)}
-          addonBefore="R$"
+          prefix="R$"
           min={0}
           step={50}
           style={{ width: '100%' }}
           autoFocus
           onPressEnter={salvarMeta}
-          formatter={currencyFormatter}
-          parser={currencyParser}
+          decimalSeparator=","
+          precision={2}
         />
       </Modal>
 

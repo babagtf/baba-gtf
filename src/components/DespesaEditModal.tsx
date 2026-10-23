@@ -5,18 +5,6 @@ import { useAppStore } from '../store/useAppStore';
 import { uid, todayISO } from '../lib/format';
 import type { Despesa } from '../types';
 
-// Helpers para máscara de moeda brasileira (R$ 1.000,00)
-const currencyFormatter = (value: number | string | undefined) => {
-  if (value === undefined || value === null) return '';
-  const str = String(value);
-  return str.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-};
-
-const currencyParser = (value: string | undefined) => {
-  if (!value) return 0;
-  return Number(value.replace(/\./g, '').replace(',', '.')) || 0;
-};
-
 export function DespesaEditModal({
   despesa,
   onClose,
@@ -59,7 +47,7 @@ export function DespesaEditModal({
 
       const dataISO = v.data.format('YYYY-MM-DD') || todayISO();
 
-      setLoading(true); // Bloqueia o botão para evitar clique duplo
+      setLoading(true);
 
       setState((s) => {
         if (isEdit) {
@@ -94,7 +82,6 @@ export function DespesaEditModal({
       message.success(isEdit ? 'Despesa atualizada' : 'Despesa registrada');
       onClose();
     } catch {
-      // Se falhar na validação, apenas remove o loading (o AntD já mostra o erro)
       setLoading(false);
     }
   };
@@ -145,11 +132,11 @@ export function DespesaEditModal({
         >
           <InputNumber
             style={{ width: '100%' }}
-            addonBefore="R$"
+            prefix="R$"
             min={0}
             step={0.01}
-            formatter={currencyFormatter}
-            parser={currencyParser}
+            decimalSeparator=","
+            precision={2}
           />
         </Form.Item>
 

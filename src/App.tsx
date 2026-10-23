@@ -15,6 +15,9 @@ import { Campanha } from './pages/Campanha';
 import { Relatorios } from './pages/Relatorios';
 import { ConfigPage } from './pages/Config';
 import { Loading } from './components/Loading';
+import ptBR from 'antd/locale/pt_BR';
+import dayjs from 'dayjs';
+import 'dayjs/locale/pt-br';
 
 export default function App() {
   const user = useAuthStore((s) => s.user);
@@ -65,7 +68,7 @@ export default function App() {
   }
 
   return (
-    <ConfigProvider theme={futebolTheme}>
+    <ConfigProvider theme={futebolTheme} locale={ptBR}>
       <AntApp>{conteudo}</AntApp>
     </ConfigProvider>
   );
