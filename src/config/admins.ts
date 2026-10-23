@@ -12,6 +12,7 @@ export interface AdminInfo {
 export const ADMINS: AdminInfo[] = [
   { email: 'luidesmatheusdev@gmail.com', nome: 'Luides Matheus' },
   { email: 'baba.gtf.videos@gmail.com', nome: 'BABA GTF Vídeos' },
+  { email: 'rizmario@gmail.com', nome: 'Rizmário' },
   { email: 'vinijr18@gmail.com', nome: 'Vini JR' },
   { email: 'fabiodoamordivino@gmail.com', nome: 'Fábio do Amor Divino' },
   { email: 'edsonfbispo@gmail.com', nome: 'Edson' },

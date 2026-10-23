@@ -40,7 +40,6 @@ export async function signInWithGoogle(): Promise<User> {
   if (!auth) throw new Error('Firebase não configurado');
   const provider = new GoogleAuthProvider();
   
-  // ⬇️ ADICIONE ESTA LINHA ⬇️
   provider.setCustomParameters({
     prompt: 'select_account'
   });
