@@ -1,18 +1,19 @@
 import { useState, useMemo } from 'react';
 import {
-  Card, Table, Input, Select, Button, Space, Tag, Modal, Form, App,
+  Card, Table, Input, Select, Button, Space, Tag, Modal, Form, App, Tooltip,
 } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { 
+  PlusOutlined, EditOutlined, StopOutlined, CheckCircleOutlined 
+} from '@ant-design/icons';
 import { useAppStore } from '../store/useAppStore';
 import { totalAssoc, getMesRef } from '../lib/calculos';
 import { fmtBR, months, monthShort } from '../lib/format';
 import type { Associado } from '../types';
 import { AssociadoDetalhe } from '../components/AssociadoDetalhe';
-import { AuditBadges } from '../components/AuditBadges';
 import { getAuditFields } from '../lib/audit';
 
 export function Associados() {
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
   const state = useAppStore((s) => s.state);
   const setState = useAppStore((s) => s.setState);
 
@@ -60,54 +61,17 @@ export function Associados() {
     setEditando(null);
   };
 
-  const excluir = (a: Associado) => {
-    const total = totalAssoc(state, a.id);
-    const temLancamentos = state.lancamentos.some((l) => l.associadoId === a.id);
-
-    if (temLancamentos) {
-      modal.confirm({
-        title: `Excluir ${a.nome}?`,
-        content: (
-          <>
-            <p>
-              Este associado tem <strong>{fmtBR(total)}</strong> em lançamentos.
-            </p>
-            <p>
-              Excluir vai remover <strong>também todos os lançamentos vinculados</strong>.
-              Para preservar o histórico, prefira alterar o status para{' '}
-              <strong>Inativo</strong> ou <strong>Ex-associado</strong>.
-            </p>
-          </>
-        ),
-        okText: 'Excluir mesmo assim',
-        okButtonProps: { danger: true },
-        cancelText: 'Cancelar',
-        onOk: () => {
-          setState((s) => ({
-            ...s,
-            associados: s.associados.filter((x) => x.id !== a.id),
-            lancamentos: s.lancamentos.filter((l) => l.associadoId !== a.id),
-          }));
-          message.success('Associado e lançamentos removidos');
-        },
-      });
-      return;
-    }
-
-    modal.confirm({
-      title: `Excluir ${a.nome}?`,
-      content: 'Este associado não tem lançamentos. Ação irreversível.',
-      okText: 'Excluir',
-      okButtonProps: { danger: true },
-      cancelText: 'Cancelar',
-      onOk: () => {
-        setState((s) => ({
-          ...s,
-          associados: s.associados.filter((x) => x.id !== a.id),
-        }));
-        message.success('Associado removido');
-      },
-    });
+  const toggleStatus = (a: Associado) => {
+    const novoStatus = a.status === 'ativo' ? 'inativo' : 'ativo';
+    setState((s) => ({
+      ...s,
+      associados: s.associados.map((x) =>
+        x.id === a.id
+          ? { ...x, status: novoStatus, ...getAuditFields() }
+          : x,
+      ),
+    }));
+    message.success(`Associado ${novoStatus === 'ativo' ? 'reativado' : 'inativado'} com sucesso`);
   };
 
   const columns = [
@@ -116,15 +80,25 @@ export function Associados() {
       dataIndex: 'nome',
       sorter: (a: Associado, b: Associado) => a.nome.localeCompare(b.nome),
       render: (nome: string, a: Associado) => (
-        <span>
+        <Space>
           <span
-            style={{ color: '#1b5e20', fontWeight: 600, cursor: 'pointer' }}
+            style={{ 
+              color: a.status === 'ativo' ? '#1b5e20' : '#999', 
+              fontWeight: 600, 
+              cursor: 'pointer',
+              textDecoration: a.status === 'inativo' ? 'line-through' : 'none'
+            }}
             onClick={() => setDetalhe(a)}
           >
             {nome}
           </span>
-          <AuditBadges item={a} />
-        </span>
+          {a.status === 'inativo' && (
+            <Tag color="error" style={{ fontWeight: 'bold' }}>INATIVO</Tag>
+          )}
+          {a.status === 'ex-associado' && (
+            <Tag color="warning" style={{ fontWeight: 'bold' }}>EX-ASSOCIADO</Tag>
+          )}
+        </Space>
       ),
     },
     {
@@ -151,8 +125,8 @@ export function Associados() {
       onFilter: (v: any, a: Associado) => a.status === v,
       render: (s: string) => {
         const color =
-          s === 'ativo' ? 'success' : s === 'inativo' ? 'default' : 'warning';
-        return <Tag color={color}>{s}</Tag>;
+          s === 'ativo' ? 'success' : s === 'inativo' ? 'error' : 'warning';
+        return <Tag color={color}>{s.toUpperCase()}</Tag>;
       },
     },
     {
@@ -163,7 +137,7 @@ export function Associados() {
       sorter: (a: Associado, b: Associado) =>
         totalAssoc(state, a.id) - totalAssoc(state, b.id),
       render: (_: unknown, a: Associado) => (
-        <strong style={{ color: '#1b5e20' }}>
+        <strong style={{ color: a.status === 'ativo' ? '#1b5e20' : '#999' }}>
           {fmtBR(totalAssoc(state, a.id))}
         </strong>
       ),
@@ -174,19 +148,23 @@ export function Associados() {
       width: 110,
       render: (_: unknown, a: Associado) => (
         <Space size="small">
-          <Button
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => setEditando(a)}
-            title="Editar"
-          />
-          <Button
-            size="small"
-            danger
-            icon={<DeleteOutlined />}
-            onClick={() => excluir(a)}
-            title="Excluir"
-          />
+          <Tooltip title="Editar cadastro">
+            <Button
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => setEditando(a)}
+            />
+          </Tooltip>
+          
+          <Tooltip title={a.status === 'ativo' ? 'Inativar associado' : 'Reativar associado'}>
+            <Button
+              size="small"
+              type={a.status === 'ativo' ? 'default' : 'primary'}
+              danger={a.status === 'ativo'}
+              icon={a.status === 'ativo' ? <StopOutlined /> : <CheckCircleOutlined />}
+              onClick={() => toggleStatus(a)}
+            />
+          </Tooltip>
         </Space>
       ),
     },

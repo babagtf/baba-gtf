@@ -70,7 +70,6 @@ export function AssociadoDetalhe({
       <p style={{ color: '#6b7f6b', marginBottom: 16 }}>
         Entrada: {monthShort(assoc.entrada)}/{state.config.anoExercicio} · Total
         pago: <strong>{fmtBR(total)}</strong>
-        <AuditBadges item={assoc} />
       </p>
 
       <Table
